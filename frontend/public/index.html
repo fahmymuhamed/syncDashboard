@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tree Visualization Dashboard</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>Tree Visualization Dashboard</h1>
+
+    <!-- Controls for views and reports -->
+    <div id="controls">
+        <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
+        <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
+        <br>
+        <label for="report-dropdown"></label><select id="report-dropdown">
+            <option value="blockedByParent">Site Blocked By Parents</option>
+            <option value="sowIssuedNoParent">SOW Issued No Parents</option>
+            <option value="sowIssuedBlockedParent">SOW Issued with Blocked Parents</option>
+            <option value="noBlockageNoInBand">No Blockage & No In-Band</option>
+            <option value="transportPorts">Transport Ports Report</option>
+        </select>
+    </div>
+
+    <!-- Tree Visualization -->
+    <div id="diagram"></div>
+
+    <!-- Progress Charts -->
+    <div id="charts">
+        <canvas id="progressChart"></canvas>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
