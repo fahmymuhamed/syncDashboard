@@ -1,0 +1,5 @@
+# Python virtual environment
+/backend/venv/
+
+# Node.js modules
+/frontend/node_modules/
