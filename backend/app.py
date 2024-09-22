@@ -12,6 +12,9 @@ def load_tree_data():
     # Define the roots dynamically where syncSolution == "Local to GM"
     roots = df[df['syncSolution'] == 'Local to GM']['SiteID'].tolist()
 
+    # Define the regions dynamically where syncSolution == "Local to GM"
+    regions = df[df['syncSolution'] == 'Local to GM']['Region'].tolist()
+
     # Create a function to build the hierarchical structure dynamically
     def build_tree(root_name):
         children_df = df[df['SyncSource'] == root_name]

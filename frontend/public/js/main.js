@@ -9,6 +9,14 @@ const solnColorMap = {
 };
 
 let currentView = 'blockTypes'; // Default view
+// Set the root node as the initial tree root
+let rootNode;
+
+// Create the tooltip element
+const tooltip = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0)
+    .style("visibility", "hidden");
 
 // Function to set the current view, update the view name, and re-render the tree
 function setView(view) {
@@ -143,10 +151,15 @@ function getDescendants(node) {
 }
 
 
-function createTree(treeData) {
+function updateTree(newRoot) {
+    // Hide the tooltip whenever the tree is updated
+    tooltip.style("visibility", "hidden");
+
     const width = 3000;
     const height = 3000;
     const radius = Math.min(width, height) / 2;
+    // Clear the existing SVG (remove previous tree)
+    d3.select("#diagram").selectAll("svg").remove();
 
     const tree = d3.tree()
         .size([2 * Math.PI, radius - 300])
@@ -161,12 +174,7 @@ function createTree(treeData) {
         .append("g")
         .attr("transform", `translate(${width / 2},${height / 2})`);
 
-    // Append a tooltip div to the body (initially hidden)
-    const tooltip = d3.select("body")
-        .append("div")
-        .attr("class", "tooltip");
-
-    let nodes = d3.hierarchy(treeData, d => d.children);
+    let nodes = d3.hierarchy(newRoot, d => d.children);
     applyDoabilityColor(nodes);
     nodes = tree(nodes);
 
@@ -182,18 +190,14 @@ function createTree(treeData) {
         .style("stroke-opacity", 1)  // Solid lines
         .style("fill", "none");
 
-
     const node = svg.append("g")
         .selectAll(".node")
         .data(nodes.descendants().filter(d => d.data.name !== "GPS"))  // Exclude the virtual root node
         .enter().append("g")
         .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-        .attr("transform", d => `
-            rotate(${d.x * 180 / Math.PI - 90})
-            translate(${d.y},0)
-        `);
+        .attr("transform", d => `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y},0)`);
 
-        // Add circles to represent nodes
+    // Add circles to represent nodes
     node.append("circle")
         .attr("r", d => d.data.localSiteDomain === 'DWDM' ? 0 : 5)  // Set circle radius to 0 for DWDM domain
         .style("fill", d => d.color);
@@ -234,9 +238,22 @@ function createTree(treeData) {
         .attr("transform", d => d.x >= Math.PI ? "rotate(180)" : null)
         .text(d => d.data.name);
 
+    node.on("click", function(event, d) {
+        // When a node is clicked, set it as the new root and update the tree
+            // Get all ancestors and descendants of the hovered node
+        const ancestors = getAncestors(d);
+        const descendants = getDescendants(d);
+        const relatedNodes = [...ancestors, d, ...descendants];
+
+        // Filter tree when a node is clicked
+        const rootNode = filterSubtree(newRoot, d);  // Filter out unrelated nodes and redraw
+        updateTree(rootNode);  // Re-draw the tree with only related nodes
+    });
+
     // Add tooltip functionality and highlight logic
     node.on("mouseover", function(event, d) {
         // Populate the tooltip with the node's data
+        tooltip.transition().duration(200).style("opacity", 0.9);
         tooltip.html(`
             <strong>SiteID</strong> ${d.data.name} <br/>
             <strong>Devices Per Site</strong> ${d.data.siteDevicesCount || 'N/A'} <br/>
@@ -282,6 +299,34 @@ function createTree(treeData) {
 
 }
 
+// Function to filter the tree to only include the clicked node's subtree and its ancestors
+function filterSubtree(root, clickedNode) {
+    // Clone the root node to avoid modifying the original data
+    const filteredRoot = JSON.parse(JSON.stringify(root));
+
+    // Recursively remove unrelated children
+    function recursiveFilter(node) {
+        if (!node.children) return;
+
+        // If this is the parent of the clicked node, keep only the clicked node as a child
+        if (node.children.some(child => child.name === clickedNode.data.name)) {
+            node.children = node.children.filter(child => child.name === clickedNode.data.name);
+        } else {
+            // Otherwise, recursively filter the children
+            node.children.forEach(recursiveFilter);
+        }
+    }
+
+    // Start filtering from the root node
+    recursiveFilter(filteredRoot);
+    return filteredRoot;
+}
+
+// Initial tree rendering
+function createTree(treeData) {
+    rootNode = treeData;  // Set the initial root node
+    updateTree(rootNode);  // Render the tree based on the root node
+}
 // Load tree data on page load
 d3.json("http://localhost:5000/api/tree").then(function(data) {
     createTree(data);
