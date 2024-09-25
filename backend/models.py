@@ -7,7 +7,6 @@ from sqlalchemy import UniqueConstraint
 db = SQLAlchemy()
 
 
-# Association table for synchronization step dependencies
 class SynchronizationStepDependency(db.Model):
     """
     Association table representing dependencies between synchronization route steps.
@@ -49,7 +48,7 @@ class Site(db.Model):
     devices = relationship('Device', back_populates='site')
     grand_master = relationship('GrandMaster', back_populates='location_site', uselist=False)
 
-    # Parent-Child Relationships
+    # Parent-Child Relationships for Tree Structure
     parent_site = relationship(
         'Site',
         remote_side=[site_id],
@@ -198,5 +197,7 @@ class Dependency(db.Model):
     site = relationship('Site', back_populates='dependencies', foreign_keys=[site_id])
     dependent_on_site = relationship('Site', foreign_keys=[dependent_on_site_id])
     dependent_on_gm = relationship('GrandMaster')
+
+    # Optional: Add backref relationships if needed
 
 # Optional: Add more models or fields as necessary for your project's requirements
