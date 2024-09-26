@@ -3,6 +3,8 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import relationship
 from sqlalchemy import UniqueConstraint
+from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 db = SQLAlchemy()
 
@@ -26,6 +28,10 @@ class SynchronizationStepDependency(db.Model):
 class Site(db.Model):
     """Model representing a network site."""
     __tablename__ = 'sites'
+    __table_args__ = (
+        db.Index('idx_parent_site_id', 'parent_site_id'),
+        db.Index('idx_nearest_transmission_site_id', 'nearest_transmission_site_id'),
+    )
     site_id = db.Column(db.String, primary_key=True)
     region = db.Column(db.String(100), nullable=False)
     site_name = db.Column(db.String(100), nullable=False)
@@ -75,6 +81,25 @@ class Site(db.Model):
         back_populates='destination_site'
     )
 
+    def get_ancestors(self, session):
+        """Retrieve all ancestor sites up to the root."""
+        ancestors = []
+        current_site = self.parent_site
+        while current_site:
+            ancestors.append(current_site)
+            current_site = current_site.parent_site
+        return ancestors
+
+    def get_descendants(self, session):
+        """Retrieve all descendant sites."""
+        descendants = []
+        stack = self.child_sites.copy()
+        while stack:
+            current = stack.pop()
+            descendants.append(current)
+            stack.extend(current.child_sites)
+        return descendants
+
 
 class Device(db.Model):
     """Model representing a network device."""
@@ -102,6 +127,9 @@ class Device(db.Model):
 class GrandMaster(db.Model):
     """Model representing a Grand Master device."""
     __tablename__ = 'grand_masters'
+    __table_args__ = (
+        db.Index('idx_location_site_id', 'location_site_id'),
+    )
     gm_id = db.Column(db.Integer, primary_key=True)
     gm_name = db.Column(db.String(100), nullable=False)
     location_site_id = db.Column(db.String, db.ForeignKey('sites.site_id'), unique=True, nullable=False)
@@ -133,6 +161,13 @@ class SynchronizationRoute(db.Model):
 class SynchronizationRouteStep(db.Model):
     """Model representing each step in a synchronization route."""
     __tablename__ = 'synchronization_route_steps'
+    __table_args__ = (
+        UniqueConstraint('route_id', 'sequence_number', name='uix_route_sequence'),
+        db.Index('idx_source_site_id', 'source_site_id'),
+        db.Index('idx_destination_site_id', 'destination_site_id'),
+    )
+
+    # Unique constraint to ensure sequence_number uniqueness within a route
     route_step_id = db.Column(db.Integer, primary_key=True)
     route_id = db.Column(db.Integer, db.ForeignKey('synchronization_routes.route_id'), nullable=False)
     sequence_number = db.Column(db.Integer, nullable=False)
@@ -171,10 +206,6 @@ class SynchronizationRouteStep(db.Model):
         cascade='all, delete-orphan'
     )
 
-    # Unique constraint to ensure sequence_number uniqueness within a route
-    __table_args__ = (
-        UniqueConstraint('route_id', 'sequence_number', name='uix_route_sequence'),
-    )
 
 
 class Dependency(db.Model):
@@ -201,3 +232,35 @@ class Dependency(db.Model):
     # Optional: Add backref relationships if needed
 
 # Optional: Add more models or fields as necessary for your project's requirements
+# models.py (continued)
+
+@db.event.listens_for(Site.parent_site_id, 'set')
+def validate_no_cycles(target, value):
+    """
+    Validate that setting a parent_site_id does not introduce cycles in the tree.
+    """
+    if value is None:
+        return
+    if value == target.site_id:
+        raise ValueError("A site cannot be its own parent.")
+    # Check for cycles
+    ancestor = Site.query.get(value)
+    while ancestor:
+        if ancestor.site_id == target.site_id:
+            raise ValueError("Cycle detected in site hierarchy.")
+        ancestor = ancestor.parent_site
+
+
+
+def get_all_descendants(session, site_id):
+    descendant_alias = aliased(Site)
+    cte = (
+        select(Site.site_id)
+        .where(Site.parent_site_id == site_id)
+        .cte(name='descendants', recursive=True)
+    )
+    cte = cte.union_all(
+        select(Site.site_id)
+        .where(Site.parent_site_id == cte.c.site_id)
+    )
+    return session.query(Site).filter(Site.site_id.in_(select(cte.c.site_id))).all()
