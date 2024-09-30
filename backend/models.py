@@ -1,10 +1,9 @@
 # models.py
 
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import relationship
-from sqlalchemy import UniqueConstraint
-from sqlalchemy import select
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import relationship, aliased
+from sqlalchemy import UniqueConstraint, CheckConstraint, select, event
+from sqlalchemy.exc import IntegrityError
 
 db = SQLAlchemy()
 
@@ -163,6 +162,7 @@ class SynchronizationRouteStep(db.Model):
     __tablename__ = 'synchronization_route_steps'
     __table_args__ = (
         UniqueConstraint('route_id', 'sequence_number', name='uix_route_sequence'),
+        CheckConstraint('sequence_number > 0', name='check_sequence_number_positive'),
         db.Index('idx_source_site_id', 'source_site_id'),
         db.Index('idx_destination_site_id', 'destination_site_id'),
     )
@@ -228,14 +228,16 @@ class Dependency(db.Model):
     site = relationship('Site', back_populates='dependencies', foreign_keys=[site_id])
     dependent_on_site = relationship('Site', foreign_keys=[dependent_on_site_id])
     dependent_on_gm = relationship('GrandMaster')
-
     # Optional: Add backref relationships if needed
 
-# Optional: Add more models or fields as necessary for your project's requirements
-# models.py (continued)
+    def __repr__(self):
+        return f"<Dependency {self.dependency_id} on Site {self.site_id}>"
 
-@db.event.listens_for(Site.parent_site_id, 'set')
-def validate_no_cycles(target, value):
+
+# Optional: Add more models or fields as necessary for your project's requirements
+
+@event.listens_for(Site.parent_site_id, 'set')
+def validate_no_cycles(target, value, oldvalue, initiator):
     """
     Validate that setting a parent_site_id does not introduce cycles in the tree.
     """
@@ -250,17 +252,3 @@ def validate_no_cycles(target, value):
             raise ValueError("Cycle detected in site hierarchy.")
         ancestor = ancestor.parent_site
 
-
-
-def get_all_descendants(session, site_id):
-    descendant_alias = aliased(Site)
-    cte = (
-        select(Site.site_id)
-        .where(Site.parent_site_id == site_id)
-        .cte(name='descendants', recursive=True)
-    )
-    cte = cte.union_all(
-        select(Site.site_id)
-        .where(Site.parent_site_id == cte.c.site_id)
-    )
-    return session.query(Site).filter(Site.site_id.in_(select(cte.c.site_id))).all()

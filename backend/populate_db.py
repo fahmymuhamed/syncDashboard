@@ -68,6 +68,7 @@ def populate_sites_table():
             'site_devices_count': "{}".format(site_data.get("siteDevicesCount")),
             'b2b_link_available': site_data.get("b2bLinkAvailalble"),
             'parent_site_id': "{}".format(site_data.get("SyncSource")) if site_data.get("SyncSource") != "GM" else None,
+            'nearest_transmission_site_id': "{}".format(site_data.get("SiteID")) if site_data.get("syncSolution") == "DWDM" else None,
             'has_ipmpls': site_data.get("has_ipmpls"),
             'has_transmission': site_data.get("has_transmission")
         }
@@ -118,7 +119,7 @@ if __name__ == '__main__':
     # Initialize and populate the database automatically on startup
     with app.app_context():
         initialize_db()
-        #populate_sites_table()
+        populate_sites_table()
         #populate_gm_table()
     app.run(debug=False)
 
