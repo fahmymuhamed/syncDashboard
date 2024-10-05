@@ -1,6 +1,8 @@
 import pandas as pd
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
+import io
+import csv
 
 app = Flask(__name__)
 
@@ -52,7 +54,33 @@ def get_progress():
         "blocked_sites": 60
     })
 
-# Add additional APIs for other reports as needed
+
+# Report generation endpoint
+@app.route('/api/report', methods=['GET'])
+def get_report():
+    report_type = request.args.get('type')
+
+    # Simulate different reports (you'll replace this with your actual logic)
+    if report_type == 'blockedByParent':
+        data = [['Site A', 'Blocked By Parent 1'], ['Site B', 'Blocked By Parent 2']]
+    elif report_type == 'sowIssuedNoParent':
+        data = [['Site C', 'SOW Issued, No Parent']]
+    elif report_type == 'sowIssuedBlockedParent':
+        data = [['Site D', 'SOW Issued, Blocked Parent']]
+    elif report_type == 'noBlockageNoInBand':
+        data = [['Site E', 'No Blockage, No In-Band']]
+    elif report_type == 'transportPorts':
+        data = [['Site F', 'Transport Ports']]
+
+    # Create a CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SiteID', 'Issue'])
+    writer.writerows(data)
+
+    # Return CSV file
+    output.seek(0)
+    return send_file(io.BytesIO(output.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name=f'{report_type}_report.csv')
 
 if __name__ == '__main__':
     CORS(app)
