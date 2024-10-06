@@ -44,6 +44,17 @@ def is_blocked_by_parent(node):
     current_node = node
     while current_node.parent:
         parent = current_node.parent
+        if (not getattr(parent, 'local_site_doable', False) and getattr(parent, 'local_site_domain', None) == "IPMPLS" and
+                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
+            return True
+        current_node = parent
+    return False
+
+# Function to determine if a node is blocked by its parent
+def is_pending_parent(node):
+    current_node = node
+    while current_node.parent:
+        parent = current_node.parent
         if (not getattr(parent, 'local_ip_transport_in_sync', False) and getattr(parent, 'local_site_domain', None) == "IPMPLS" and
                 (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
             return True
@@ -61,7 +72,7 @@ def apply_node_colors(root):
             node.design_color = 'red'  # Blocked
         elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and is_blocked_by_parent(node):
             node.implementation_color = 'DarkGrey'  # Blocked by Parent
-            node.design_color = 'RoyalBlue'  # Blocked by Parent
+            node.design_color = 'DarkGrey'  # Blocked by Parent
         elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and not is_blocked_by_parent(node):
             if getattr(node, 'local_sync_solution', None) in ["Local to DWDM", "Local to GM"] and not getattr(node, 'local_transmission_in_sync', False):
                 node.implementation_color = 'Orange'  # Doable
