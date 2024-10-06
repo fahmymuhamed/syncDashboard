@@ -40,18 +40,7 @@ for root in roots:
     build_tree(root, gps_root)
 
 # Function to determine if a node is blocked by its parent
-def is_blocked_by_parent(node):
-    current_node = node
-    while current_node.parent:
-        parent = current_node.parent
-        if (not getattr(parent, 'local_site_doable', False) and getattr(parent, 'local_site_domain', None) == "IPMPLS" and
-                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
-            return True
-        current_node = parent
-    return False
-
-# Function to determine if a node is blocked by its parent
-def is_pending_parent(node):
+def is_blocked_by_parent_sync(node):
     current_node = node
     while current_node.parent:
         parent = current_node.parent
@@ -61,8 +50,20 @@ def is_pending_parent(node):
         current_node = parent
     return False
 
+# Function to determine if a node is blocked by its parent
+def is_blocked_by_parent_design(node):
+    current_node = node
+    while current_node.parent:
+        parent = current_node.parent
+        if (not getattr(parent, 'local_site_doable', False) and getattr(parent, 'local_site_domain', None) == "IPMPLS" and
+                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
+            return True
+        current_node = parent
+    return False
+
 # Function to apply colors to the nodes based on certain criteria
 def apply_node_colors(root):
+
     for node in LevelOrderIter(root):
         if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             node.implementation_color = 'LimeGreen'  # In Sync
@@ -70,11 +71,17 @@ def apply_node_colors(root):
         elif getattr(node, 'local_site_domain', None) == "IPMPLS" and not getattr(node, 'local_site_doable', False):
             node.implementation_color = 'red'  # Blocked
             node.design_color = 'red'  # Blocked
-        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and is_blocked_by_parent(node):
-            node.implementation_color = 'DarkGrey'  # Blocked by Parent
-            node.design_color = 'DarkGrey'  # Blocked by Parent
-        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and not is_blocked_by_parent(node):
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and is_blocked_by_parent_design(node):
+            node.implementation_color = 'red'  # Blocked by Parent
+            node.design_color = 'RoyalBlue'  # Blocked by Parent
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and is_blocked_by_parent_sync(node):
+            node.implementation_color = 'Gray'  # Blocked by Parent
+            node.design_color = 'RoyalBlue'  # Blocked by Parent
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS":
             if getattr(node, 'local_sync_solution', None) in ["Local to DWDM", "Local to GM"] and not getattr(node, 'local_transmission_in_sync', False):
+                node.implementation_color = 'Orange'  # Doable
+                node.design_color = 'RoyalBlue'  # Doable
+            elif getattr(node, 'local_sync_solution', None) == "Dedicated DF" and getattr(node, 'upper_sync_source_site_domain', None) == "DWDM" and not getattr(node.parent, 'local_transmission_in_sync', False):
                 node.implementation_color = 'Orange'  # Doable
                 node.design_color = 'RoyalBlue'  # Doable
             else:
@@ -87,12 +94,10 @@ def apply_node_colors(root):
 # Calculate project statistics based on the nodes
 def calculate_project_stats(root):
     result = {
-        "all_root_sites_count": 0,
-        "all_root_sites_names": set(),
         "in_sync_sites_count": 0,
-        "blocked_root_sites_count": 0,
-        "blocked_root_sites_names": set(),
-        "blocked_leaves": 0,
+        "pending_parents_sync": 0,
+        "blocked_by_parents_design": 0,
+        "pending_transmission": 0,
         "blocked_issued_sow": 0,
         "ready_by_design": 0,
         "total_blocked_locally": 0,
@@ -104,11 +109,6 @@ def calculate_project_stats(root):
     }
 
     for node in LevelOrderIter(root):
-        if node.children:
-            for child_node in node.children:
-                if getattr(child_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"]:
-                    result["all_root_sites_count"] += 1
-                    result["all_root_sites_names"].add(node.name)
 
         if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             result["in_sync_sites_count"] += 1
@@ -117,12 +117,21 @@ def calculate_project_stats(root):
             result["total_blocked_sites"] += 1
             if getattr(node, 'scope_of_work_issued', False):
                 result["blocked_issued_sow"] += 1
-        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and is_blocked_by_parent(node):
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and is_blocked_by_parent_design(node):
             result["total_affected_by_parent"] += 1
             result["total_blocked_sites"] += 1
+            result["blocked_by_parents_design"] += 1
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and is_blocked_by_parent_sync(node):
+            result["total_affected_by_parent"] += 1
+            result["total_blocked_sites"] += 1
+            result["pending_parents_sync"] += 1
             if getattr(node, 'scope_of_work_issued', False):
                 result["blocked_issued_sow"] += 1
-        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and not is_blocked_by_parent(node) and not getattr(node, 'local_ip_transport_in_sync', False):
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_sync_solution', None) in ["Local to DWDM", "Local to GM"] and not getattr(node, 'local_transmission_in_sync', False):
+            result['pending_transmission'] += 1
+        elif getattr(node, 'local_sync_solution', None) == "Dedicated DF" and getattr(node, 'upper_sync_source_site_domain', None) == "DWDM" and not getattr(node.parent, 'local_transmission_in_sync', False):
+            result['pending_transmission'] += 1
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS":
             result["ready_by_design"] += 1
             if getattr(node, 'scope_of_work_issued', False) and getattr(node, 'tech_data_provided', False):
                 result["total_sow_and_tech_data"] += 1
@@ -130,10 +139,6 @@ def calculate_project_stats(root):
                 result["total_sow_no_tech_data"] += 1
             else:
                 result["total_doable_no_sow"] += 1
-
-    # Convert sets to lists for serialization
-    result["all_root_sites_names"] = list(result["all_root_sites_names"])
-    result["blocked_root_sites_names"] = list(result["blocked_root_sites_names"])
 
     return result
 
@@ -148,7 +153,6 @@ def get_tree():
 def get_progress():
     result = calculate_project_stats (gps_root)
     return jsonify(result)
-
 
 # Report generation endpoint
 @app.route('/api/report', methods=['GET'])

@@ -286,7 +286,7 @@ function createTree(data) {
 
     // Add legends based on the current view
     if (currentView === 'blockTypes') {
-        addBlockTypesLegend(svg, radius, projectStats.total_blocked_locally, projectStats.total_affected_by_parent, projectStats.ready_by_design, projectStats.in_sync_sites_count);
+        addBlockTypesLegend(svg, radius, projectStats.total_blocked_locally, projectStats.blocked_by_parents_design, projectStats.pending_parents_sync, projectStats.pending_transmission, projectStats.total_affected_by_parent, projectStats.ready_by_design, projectStats.in_sync_sites_count);
     } else if (currentView === 'sowAndTech') {
         addSowAndTechLegend(svg, radius, projectStats.total_sow_and_tech_data, projectStats.total_sow_no_tech_data, projectStats.total_doable_no_sow, projectStats.total_blocked_sites);
     }
@@ -313,13 +313,15 @@ document.getElementById('search-node-form').addEventListener('submit', function 
     }
 });
 
-function addBlockTypesLegend(svg, radius, totalBlockedLocally, totalAffectedByParent, readyByDesign, inSyncSitesCount) {
+function addBlockTypesLegend(svg, radius, totalBlockedLocally, blockedByParentsDesign, pendingParentsSync, pendingTransmission, totalAffectedByParent, readyByDesign, inSyncSitesCount) {
 
     const nodeLegend = svg.selectAll(".node-legend")
         .data([
             { label: `IPMPLS InSync: ${inSyncSitesCount}`, color: 'LimeGreen' },
-            { label: `IPMPLS Blocked: ${totalBlockedLocally}`, color: 'red' },
-            { label: `IPMPLS Ready: ${readyByDesign - inSyncSitesCount} + Blocked by Parent: ${totalAffectedByParent}`, color: 'RoyalBlue' },
+            { label: `IPMPLS Blocked: ${totalBlockedLocally} + Blocked by Parent: ${blockedByParentsDesign}`, color: 'red' },
+            { label: `Pending Parent Sync: ${pendingParentsSync}`, color: 'Gray' },
+            { label: `Pending Transmission: ${pendingTransmission}`, color: 'Orange' },
+            { label: `IPMPLS Ready: ${readyByDesign}`, color: 'RoyalBlue' },
             { label: 'Grand Master Clock', color: 'RoyalBlue' },
             { label: 'DWDM', color: 'RoyalBlue' }
         ])
@@ -360,7 +362,7 @@ function addBlockTypesLegend(svg, radius, totalBlockedLocally, totalAffectedByPa
         .data(Object.keys(solnLegnedColorMap))
         .enter().append("g")
         .attr("class", "legend")
-        .attr("transform", (d, i) => `translate(${radius - 650},${radius - 660 + (i + 7) * 20})`);
+        .attr("transform", (d, i) => `translate(${radius - 650},${radius - 610 + (i + 7) * 20})`);
 
     linkLegend.append("line")
         .attr("x1", 0)
@@ -379,7 +381,7 @@ function addBlockTypesLegend(svg, radius, totalBlockedLocally, totalAffectedByPa
 
     svg.append("text")
         .attr("x", radius - 650)
-        .attr("y", radius - 550)
+        .attr("y", radius - 500)
         .attr("dy", ".35em")
         .style("text-anchor", "start")
         .style("font-weight", "bold")
