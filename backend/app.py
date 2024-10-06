@@ -1,58 +1,142 @@
 import pandas as pd
+from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
+from anytree.exporter import JsonExporter
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
 import io
 import csv
 
 app = Flask(__name__)
+CORS(app)
 
-# Load your Excel data dynamically
-def load_tree_data():
-    file_path = 'data/map_v4.xlsx'  # Replace with your actual file path
-    df = pd.read_excel(file_path, sheet_name='Sheet1', dtype=object)
+# Build the main GPS root node
+gps_root = Node("GPS", local_site_domain="DWDM", local_transmission_in_sync=True, local_site_doable=True, design_color='black', implementation_color='black')
 
-    # Define the roots dynamically where syncSolution == "Local to GM"
-    roots = df[df['syncSolution'] == 'Local to GM']['SiteID'].tolist()
+# Load the Excel data once at startup to avoid loading repeatedly
+data_file_path = 'data/map_v4.2.xlsx'  # Replace with your actual file path
+df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
 
-    # Define the regions dynamically where syncSolution == "Local to GM"
-    regions = df[df['syncSolution'] == 'Local to GM']['Region'].tolist()
+# Create JsonExporter to export tree in JSON format
+exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(obj, '__dict__', str(obj)))
 
-    # Create a function to build the hierarchical structure dynamically
-    def build_tree(root_name):
-        children_df = df[df['SyncSource'] == root_name]
-        children = children_df['SiteID'].tolist()
-        site_info = df[df['SiteID'] == root_name].iloc[0].to_dict()
-        node = {
-            'name': root_name,
-            'children': [build_tree(child) for child in children]
-        }
-        for key, value in site_info.items():
-            if key != 'SyncSource' and key != 'SiteID':
-                node[key] = value
-        return node
+# Define the roots dynamically where local_sync_solution == 'Local to GM'
+roots = df[df['local_sync_solution'] == 'Local to GM']['local_site_name'].tolist()
 
-    tree_data = {
-        'name': 'GPS',
-        'localSiteDoability': True,
-        'children': [build_tree(root) for root in roots]
+# Create a function to build the hierarchical structure dynamically using anytree
+def build_tree(root_name, parent_node=None):
+    # Get information for the current root node
+    site_info = df[df['local_site_name'] == root_name].iloc[0].to_dict()
+    # Create a node for the current site with attributes
+    node = Node(root_name, parent=parent_node, design_color='black', implementation_color='black', **{k: v for k, v in site_info.items()})
+    # Recursively build child nodes
+    children_df = df[df['upper_sync_source_site_name'] == root_name]
+    children = children_df['local_site_name'].tolist()
+    for child in children:
+        build_tree(child, node)
+    return node
+
+# Build the tree for each root and attach it under GPS
+for root in roots:
+    build_tree(root, gps_root)
+
+# Function to determine if a node is blocked by its parent
+def is_blocked_by_parent(node):
+    current_node = node
+    while current_node.parent:
+        parent = current_node.parent
+        if (not getattr(parent, 'local_ip_transport_in_sync', False) and getattr(parent, 'local_site_domain', None) == "IPMPLS" and
+                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
+            return True
+        current_node = parent
+    return False
+
+# Function to apply colors to the nodes based on certain criteria
+def apply_node_colors(root):
+    for node in LevelOrderIter(root):
+        if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
+            node.implementation_color = 'LimeGreen'  # In Sync
+            node.design_color = 'LimeGreen'  # In Sync
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and not getattr(node, 'local_site_doable', False):
+            node.implementation_color = 'red'  # Blocked
+            node.design_color = 'red'  # Blocked
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and is_blocked_by_parent(node):
+            node.implementation_color = 'DarkGrey'  # Blocked by Parent
+            node.design_color = 'RoyalBlue'  # Blocked by Parent
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and not is_blocked_by_parent(node):
+            if getattr(node, 'local_sync_solution', None) in ["Local to DWDM", "Local to GM"] and not getattr(node, 'local_transmission_in_sync', False):
+                node.implementation_color = 'Orange'  # Doable
+                node.design_color = 'RoyalBlue'  # Doable
+            else:
+                node.implementation_color = 'RoyalBlue'  # Doable
+                node.design_color = 'RoyalBlue'  # Doable
+        else:
+            node.implementation_color = 'Black'  # Dropped from logic
+            node.design_color = 'Black'  # Dropped from logic
+
+# Calculate project statistics based on the nodes
+def calculate_project_stats(root):
+    result = {
+        "all_root_sites_count": 0,
+        "all_root_sites_names": set(),
+        "in_sync_sites_count": 0,
+        "blocked_root_sites_count": 0,
+        "blocked_root_sites_names": set(),
+        "blocked_leaves": 0,
+        "blocked_issued_sow": 0,
+        "ready_by_design": 0,
+        "total_blocked_locally": 0,
+        "total_blocked_sites": 0,
+        "total_affected_by_parent": 0,
+        "total_sow_and_tech_data": 0,
+        "total_sow_no_tech_data": 0,
+        "total_doable_no_sow": 0
     }
-    return tree_data
+
+    for node in LevelOrderIter(root):
+        if node.children:
+            for child_node in node.children:
+                if getattr(child_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"]:
+                    result["all_root_sites_count"] += 1
+                    result["all_root_sites_names"].add(node.name)
+
+        if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
+            result["in_sync_sites_count"] += 1
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and not getattr(node, 'local_site_doable', False):
+            result["total_blocked_locally"] += 1
+            result["total_blocked_sites"] += 1
+            if getattr(node, 'scope_of_work_issued', False):
+                result["blocked_issued_sow"] += 1
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and is_blocked_by_parent(node):
+            result["total_affected_by_parent"] += 1
+            result["total_blocked_sites"] += 1
+            if getattr(node, 'scope_of_work_issued', False):
+                result["blocked_issued_sow"] += 1
+        elif getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_site_doable', False) and not is_blocked_by_parent(node) and not getattr(node, 'local_ip_transport_in_sync', False):
+            result["ready_by_design"] += 1
+            if getattr(node, 'scope_of_work_issued', False) and getattr(node, 'tech_data_provided', False):
+                result["total_sow_and_tech_data"] += 1
+            elif getattr(node, 'scope_of_work_issued', False) and not getattr(node, 'tech_data_provided', False):
+                result["total_sow_no_tech_data"] += 1
+            else:
+                result["total_doable_no_sow"] += 1
+
+    # Convert sets to lists for serialization
+    result["all_root_sites_names"] = list(result["all_root_sites_names"])
+    result["blocked_root_sites_names"] = list(result["blocked_root_sites_names"])
+
+    return result
 
 # API to serve tree data
 @app.route('/api/tree', methods=['GET'])
 def get_tree():
-    tree_data = load_tree_data()
-    return jsonify(tree_data)
+    apply_node_colors(gps_root)
+    return exporter.export(gps_root)
 
 # API to serve progress metrics
-@app.route('/api/progress', methods=['GET'])
+@app.route('/api/project_stats', methods=['GET'])
 def get_progress():
-    # Example of dynamic progress data, can be updated based on actual logic
-    return jsonify({
-        "sow_issued": 120,
-        "sow_pending": 80,
-        "blocked_sites": 60
-    })
+    result = calculate_project_stats (gps_root)
+    return jsonify(result)
 
 
 # Report generation endpoint

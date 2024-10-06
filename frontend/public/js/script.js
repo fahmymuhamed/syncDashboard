@@ -1,7 +1,8 @@
 let currentView = 'blockTypes';
 let treeDataCache = null; // Store the tree data for updating nodes
-let barChartInstance = null; // Chart.js instance for bar chart
-let pieChartInstance = null; // Chart.js instance for pie chart
+let projectStats = null; // Store the tree data for updating nodes
+let overallChartInstance = null; // Chart.js instance for the overall progress chart
+let regionChartInstances = []; // Array to store Chart.js instances for region-wise pie charts
 
 // Color mapping for Soln values
 const solnColorMap = {
@@ -24,65 +25,18 @@ function setView(view) {
     currentView = view;
     updateViewName();
     d3.select("svg").remove();
+    fetchProjectStats();
     fetchTreeData();
 
     // Show the tree visualization
     document.getElementById('diagram').style.display = 'block';
-    document.getElementById('progress-bar-chart').style.display = 'none';
-    document.getElementById('completion-pie-chart').style.display = 'none';
+    document.getElementById('chart-container').style.display = 'none';
     document.getElementById('main-content-title').innerText = 'Tree Visualization';
 
 }
 
 function updateViewName() {
     const viewName = currentView === 'blockTypes' ? 'Block Types' : 'SOW Issuance & Tech Data';
-}
-
-// Function to determine if a node is blocked by a parent
-function isBlockedByParent(node) {
-    let currentNode = node;
-    while (currentNode.parent) {
-        if (!currentNode.parent.data.IPMPLSsyncDone && currentNode.parent.data.localSiteDomain === "IPMPLS" && (['Dedicated DF', 'In-Band' ].includes(currentNode.data.syncSolution) || ['Dedicated DF', 'In-Band'].includes(currentNode.parent.data.syncSolution))) {
-            return true;
-        }
-        currentNode = currentNode.parent;
-    }
-    return false;
-}
-
-// Recursive function to apply colors based on the current view
-function applyDoabilityColor(node) {
-    if (currentView === 'blockTypes') {
-        if (!node.data.localSiteDoability) {
-            node.color = 'red';  // Blocked
-        } else if (node.data.IPMPLSsyncDone) {
-                node.color = 'LimeGreen';  // Blocked by Parent
-        } else if (isBlockedByParent(node)) {
-                node.color = 'RoyalBlue';  // Blocked by Parent
-        } else {
-            node.color = 'RoyalBlue';  // Doable
-        }
-    } else if (currentView === 'sowAndTech') {
-        // In this view, all blocked sites and those blocked by a parent are treated as blocked
-        if (!node.data.localSiteDoability) {
-            node.color = 'red';  // Treat as blocked
-        } else if (isBlockedByParent(node)) {
-            node.color = 'red';  // Blocked by Parent
-        } else {
-            if (node.data.ScopeOfWork && node.data.techDataProvided) {
-                node.color = 'green';  // SOW Issued and Tech Data Provided
-            } else if (node.data.ScopeOfWork && !node.data.techDataProvided) {
-                node.color = 'LightGreen';  // SOW Issued but Tech Data Not Provided
-            } else {
-                node.color = 'orange';  // Pending SOW Issuance
-            }
-        }
-    }
-
-    // Recursively apply this logic to all children
-    if (node.children) {
-        node.children.forEach(child => applyDoabilityColor(child));
-    }
 }
 
 function fetchTreeData() {
@@ -95,92 +49,18 @@ function fetchTreeData() {
         .catch(error => console.error('Error fetching tree data:', error));
 }
 
+function fetchProjectStats() {
+    fetch('http://localhost:5000/api/project_stats')
+        .then(response => response.json())
+        .then(data => {
+            projectStats = data; // Store data in treeDataCache for potential updates
+        })
+        .catch(error => console.error('Error fetching tree data:', error));
+}
+
 function generateReport() {
     const reportType = document.getElementById('report-dropdown').value;
     window.open(`http://localhost:5000/api/report?type=${reportType}`, '_blank');
-}
-
-
-// Function to count blocked root sites, affected leaves, and categorized doable sites
-function countBlockedAndAffectedNodes(nodes) {
-    let allRootSitesCount = 0;
-    let allRootSitesNames = [];
-    let inSyncSitesCount = 0;
-    let blockedRootSitesCount = 0;
-    let blockedRootSitesNames = [];
-    let blockedLeaves = 0;
-    let blockedIssuedSow = 0;
-    let readyByDesign = 0;
-    let totalBlockedLocally = 0;
-    let totalBlockedSites = 0;
-    let totalAffectedByParent = 0;
-    let totalSowAndTechData = 0;
-    let totalSowNoTechData = 0;
-    let totalDoableNoSow = 0;
-
-    nodes.each(function(node) {
-        if (node.data.IPMPLSsyncDone){
-            inSyncSitesCount += 1;
-        }
-        if (node.children && node.children.length > 0) {
-            let childNodeList = node.children;
-            for (let childNode of childNodeList) {
-                if (['Dedicated DF', 'In-Band' ].includes(childNode.data.syncSolution)) {
-                    allRootSitesCount += 1;
-                    allRootSitesNames.push(node.data.name);
-                }
-            }
-        }
-        if (node.data.localSiteDomain === 'IPMPLS' && !node.data.localSiteDoability) {
-            totalBlockedLocally += 1;
-            totalBlockedSites += 1;
-            if (node.children && node.children.length > 0 && ['Dedicated DF', 'In-Band' ].includes(node.data.syncSolution)) {
-                for (let childNode of node.children) {
-                    if (['Dedicated DF', 'In-Band' ].includes(childNode.syncSolution)) {
-                        blockedRootSitesCount += 1;
-                        blockedRootSitesNames.push(node.data.name);
-                    }
-                }
-            } else {
-                blockedLeaves += 1;
-            }
-            if (node.data.ScopeOfWork) {
-                blockedIssuedSow += 1;
-            }
-        } else if (node.data.localSiteDomain === 'IPMPLS' && node.data.localSiteDoability && isBlockedByParent(node)) {
-            // Node is Doable but has a blocked parent
-            totalAffectedByParent += 1;
-            totalBlockedSites += 1;
-            if (node.data.ScopeOfWork) {
-                blockedIssuedSow += 1;
-            }
-        } else if (node.data.localSiteDomain === 'IPMPLS' && node.data.localSiteDoability && !isBlockedByParent(node)) {
-            readyByDesign += 1;
-            if (node.data.localSiteDomain === 'IPMPLS' && node.data.ScopeOfWork && node.data.techDataProvided) {
-                totalSowAndTechData += 1;
-            } else if (node.data.ScopeOfWork && !node.data.techDataProvided) {
-                totalSowNoTechData += 1;
-            } else {
-                totalDoableNoSow += 1;
-            }
-        }
-    });
-    return {
-        allRootSitesCount,
-        allRootSitesNames,
-        inSyncSitesCount,
-        blockedRootSitesCount,
-        blockedRootSitesNames,
-        blockedLeaves,
-        blockedIssuedSow,
-        totalBlockedLocally,
-        totalBlockedSites,
-        readyByDesign,
-        totalAffectedByParent,
-        totalSowAndTechData,
-        totalSowNoTechData,
-        totalDoableNoSow
-    };
 }
 
 // Function to find all ancestors (roots) of a node
@@ -209,18 +89,45 @@ function getDescendants(node) {
     return descendants;
 }
 
+// Handle Node Fetch Button Click
+document.getElementById('fetch-node-data').addEventListener('click', function () {
+    const nodeId = document.getElementById('node-id').value;
+    if (nodeId) {
+        fetchNodeData(nodeId);
+    }
+});
+
 // Handle Node Update Form Submission
 document.getElementById('update-node-form').addEventListener('submit', function (e) {
     e.preventDefault(); // Prevent form from submitting the default way
 
     const nodeId = document.getElementById('node-id').value;
-    const newName = document.getElementById('node-name').value;
-    const newType = document.getElementById('node-type').value;
+    const transportSyncStatus = document.getElementById('transport-sync-status').value;
+    const transmissionSyncStatus = document.getElementById('transmission-sync-status').value;
+    const siteDoableStatus = document.getElementById('site-doable-status').value;
 
-    updateNodeInformation(nodeId, newName, newType);
+    updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus);
 });
 
-function updateNodeInformation(nodeId, newName, newType) {
+function fetchNodeData(nodeId) {
+    if (!treeDataCache) {
+        console.error('Tree data not loaded.');
+        return;
+    }
+
+    // Find the node by ID and populate the form with its information
+    const node = findNodeById(treeDataCache, nodeId);
+    if (node) {
+        document.getElementById('transport-sync-status').value = node.local_ip_transport_in_sync || 'false';
+        document.getElementById('transmission-sync-status').value = node.local_transmission_in_sync || 'false';
+        document.getElementById('site-doable-status').value = node.local_site_doable || 'false';
+        document.getElementById('update-fields').style.display = 'block';
+    } else {
+        console.error('Node not found');
+    }
+}
+
+function updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus) {
     if (!treeDataCache) {
         console.error('Tree data not loaded.');
         return;
@@ -229,14 +136,15 @@ function updateNodeInformation(nodeId, newName, newType) {
     // Find the node by ID and update its information
     const node = findNodeById(treeDataCache, nodeId);
     if (node) {
-        node.name = newName || node.name;
-        node.type = newType || node.type;
+        node.local_ip_transport_in_sync = transportSyncStatus;
+        node.local_transmission_in_sync = transmissionSyncStatus;
+        node.local_site_doable = siteDoableStatus;
 
         // Re-render the tree with updated data
         d3.select("svg").remove();
         const svg = d3.select("#diagram").append("svg")
-            .attr("width", 1000)
-            .attr("height", 1000);
+            .attr("width", 3000)
+            .attr("height", 3000);
 
         createTree(treeDataCache);
     } else {
@@ -258,6 +166,7 @@ function findNodeById(node, id) {
     }
     return null;
 }
+
 function createTree(data) {
     const width = 3000;
     const height = 3000;
@@ -277,28 +186,8 @@ function createTree(data) {
         .attr("transform", `translate(${width / 2},${height / 2})`);
 
     let nodes = d3.hierarchy(data, d => d.children);
-    applyDoabilityColor(nodes);
 
     nodes = tree(nodes);
-
-
-    // Calculate the summary counts
-    const {
-        allRootSitesCount,
-        allRootSitesNames,
-        inSyncSitesCount,
-        blockedRootSitesCount,
-        blockedRootSitesNames,
-        blockedLeaves,
-        blockedIssuedSow,
-        totalBlockedLocally,
-        totalBlockedSites,
-        readyByDesign,
-        totalAffectedByParent,
-        totalSowAndTechData,
-        totalSowNoTechData,
-        totalDoableNoSow
-    } = countBlockedAndAffectedNodes(nodes);
 
     const link = svg.append("g")
         .selectAll(".link")
@@ -308,7 +197,7 @@ function createTree(data) {
         .attr("d", d3.linkRadial()
             .angle(d => d.x)
             .radius(d => d.y))
-        .style("stroke", d => solnColorMap[d.target.data.syncSolution] || '#888')
+        .style("stroke", d => solnColorMap[d.target.data.local_sync_solution] || '#888')
         .style("stroke-opacity", 1)  // Solid lines
         .style("fill", "none");
 
@@ -325,34 +214,34 @@ function createTree(data) {
 
     // Add circles to represent nodes
     node.append("circle")
-        .attr("r", d => d.data.localSiteDomain === 'DWDM' ? 0 : 5)  // Set circle radius to 0 for DWDM domain
-        .style("fill", d => d.color);
+        .attr("r", d => d.data.local_site_domain === 'DWDM' ? 0 : 5)  // Set circle radius to 0 for DWDM domain
+        .style("fill", d => currentView === 'blockTypes' ? d.data.implementation_color : d.data.design_color );
 
     // Add a distinct symbol (e.g., star) for nodes "Local to DWDM" to represent the Grand Master clock
-    node.filter(d => d.data.localSiteDomain === 'DWDM')  // Filter nodes with "Local to DWDM"
+    node.filter(d => d.data.local_site_domain === 'DWDM')  // Filter nodes with "Local to DWDM"
         .append("path")
         .attr("d", d3.symbol().type(d3.symbolTriangle).size(60))  // Triangle symbol
         .attr("transform", "translate(0, 0)")  // Position the symbol to the right of the circle
-        .style("fill", d => d.data.DWDMSyncDone ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the DWDM
+        .style("fill", d => d.data.local_transmission_in_sync ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the DWDM
         .style("stroke", "steelblue")
         .style("stroke-width", 0.01);
 
     // Add a distinct symbol (e.g., star) for nodes "Local to GM" to represent the Grand Master clock
-    node.filter(d => d.data.syncSolution === 'Local to GM' && d.data.localSiteDomain === 'IPMPLS')  // Filter nodes with "Local to GM"
+    node.filter(d => d.data.local_sync_solution === 'Local to GM' && d.data.local_site_domain === 'IPMPLS')  // Filter nodes with "Local to GM"
         .append("path")
         .attr("d", d3.symbol().type(d3.symbolSquare).size(200))  // Square symbol
         .attr("transform", "translate(-20, 0)")  // Position the symbol to the right of the circle
-        .style("fill", d => d.data.DWDMSyncDone ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the Grand Master clock
+        .style("fill", d => d.data.local_transmission_in_sync ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the Grand Master clock
         .style("stroke", "steelblue")
         .style("stroke-width", 0.01);
 
     // Add a distinct symbol (e.g., star) for nodes "Local to DWDM" to represent the Grand Master clock
-    node.filter(d => d.data.syncSolution === 'Local to DWDM' && d.data.localSiteDomain === 'IPMPLS')  // Filter nodes with "Local to DWDM"
+    node.filter(d => d.data.local_sync_solution === 'Local to DWDM' && d.data.local_site_domain === 'IPMPLS')  // Filter nodes with "Local to DWDM"
         .append("path")
         .attr("d", d3.symbol().type(d3.symbolTriangle).size(60))  // Triangle symbol
         .attr("transform", "translate(-15, 0)" )  // Position the symbol to the right of the circle
         //.attr("transform",  d => 'rotate(270) translate(-15,0)')
-        .style("fill", d => d.data.DWDMSyncDone ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the DWDM
+        .style("fill", d => d.data.local_transmission_in_sync ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the DWDM
         .style("stroke", "steelblue")
         .style("stroke-width", 0.01);
 
@@ -367,7 +256,7 @@ function createTree(data) {
     // Add node info and highlight logic
     node.on("mouseover", function(event, d) {
         // Populate the ode info  with the node's data
-        document.getElementById('node-info-content').innerText = `Node Name: ${d.data.name}\nType: ${d.data.type || 'N/A'}`;
+        document.getElementById('search-result').innerText = `Node Name: ${d.data.name}\nSync Solution: ${d.data.local_sync_solution || 'N/A'}\nRouter Platform: ${d.data.local_ip_transport_site_router_platform || 'N/A'}\nRouter Layer: ${d.data.local_ip_transport_site_router_layer || 'N/A'}\nUpper Sync Source: ${d.data.upper_sync_source_site_name || 'N/A'}`;
 
         // Get all ancestors and descendants of the hovered node
         const ancestors = getAncestors(d);
@@ -390,7 +279,6 @@ function createTree(data) {
 
     })
     .on("mouseout", function() {
-
         // Restore full opacity for all nodes
         node.style("opacity", 1);
         link.style("opacity", 1);
@@ -398,9 +286,9 @@ function createTree(data) {
 
     // Add legends based on the current view
     if (currentView === 'blockTypes') {
-        addBlockTypesLegend(svg, radius, totalBlockedLocally, totalAffectedByParent, readyByDesign, inSyncSitesCount);
+        addBlockTypesLegend(svg, radius, projectStats.total_blocked_locally, projectStats.total_affected_by_parent, projectStats.ready_by_design, projectStats.in_sync_sites_count);
     } else if (currentView === 'sowAndTech') {
-        addSowAndTechLegend(svg, radius, totalSowAndTechData, totalSowNoTechData, totalDoableNoSow, totalBlockedSites);
+        addSowAndTechLegend(svg, radius, projectStats.total_sow_and_tech_data, projectStats.total_sow_no_tech_data, projectStats.total_doable_no_sow, projectStats.total_blocked_sites);
     }
 }
 
@@ -419,7 +307,7 @@ document.getElementById('search-node-form').addEventListener('submit', function 
     const searchResultDiv = document.getElementById('search-result');
 
     if (node) {
-        searchResultDiv.innerText = `Node Name: ${node.name}\nType: ${node.type || 'N/A'}`;
+        searchResultDiv.innerText = `Node Name: ${node.name}\nSync Solution: ${node.local_sync_solution || 'N/A'}\nRouter Platform: ${node.local_ip_transport_site_router_platform || 'N/A'}\nRouter Layer: ${node.local_ip_transport_site_router_layer || 'N/A'}\nUpper Sync Source: ${node.upper_sync_source_site_name || 'N/A'}`;
     } else {
         searchResultDiv.innerText = 'Node not found';
     }
@@ -607,49 +495,47 @@ function showSection(sectionId) {
     if (sectionId === 'reports') {
         // Show charts in main content instead of tree visualization
         document.getElementById('diagram').style.display = 'none';
-        document.getElementById('progress-bar-chart').style.display = 'block';
-        document.getElementById('completion-pie-chart').style.display = 'block';
+        document.getElementById('chart-container').style.display = 'block';
         document.getElementById('main-content-title').innerText = 'Project Progress Charts';
 
         // Generate progress charts
-        generateProgressBarChart();
-        generateCompletionPieChart();
+        generateProgressCharts();
     } else {
         // Show the tree visualization for other views
         document.getElementById('diagram').style.display = 'block';
-        document.getElementById('progress-bar-chart').style.display = 'none';
-        document.getElementById('completion-pie-chart').style.display = 'none';
+        document.getElementById('chart-container').style.display = 'none';
         document.getElementById('main-content-title').innerText = 'Tree Visualization';
     }
 }
 
-function generateProgressBarChart() {
-    const ctx = document.getElementById('progress-bar-chart').getContext('2d');
+function generateProgressCharts() {
+    const ctxOverall = document.getElementById('overall-progress-chart').getContext('2d');
+    const regionChartsContainer = document.getElementById('region-charts-container');
 
-    if (barChartInstance) {
-        barChartInstance.destroy(); // Destroy existing chart if it exists
+    // Destroy existing charts if they exist
+    if (overallChartInstance) {
+        overallChartInstance.destroy();
     }
+    regionChartInstances.forEach(chart => chart.destroy());
+    regionChartInstances = [];
 
-    barChartInstance = new Chart(ctx, {
+    // Generate overall progress chart (Bar chart)
+    overallChartInstance = new Chart(ctxOverall, {
         type: 'bar',
         data: {
-            labels: ['Blocked Sites', 'SOW Issued No Parent', 'SOW Issued Blocked Parent', 'No Blockage', 'Transport Ports'],
+            labels: ['Implemented Sites', 'Ready', 'Blocked'],
             datasets: [{
-                label: 'Project Progress',
-                data: [12, 19, 3, 5, 2], // Sample data, replace with dynamic data as needed
+                label: 'Overall Project Progress',
+                data: [projectStats.in_sync_sites_count, projectStats.ready_by_design, projectStats.total_blocked_sites],
                 backgroundColor: [
-                    'rgba(255, 99, 132, 0.2)',
-                    'rgba(54, 162, 235, 0.2)',
-                    'rgba(255, 206, 86, 0.2)',
-                    'rgba(75, 192, 192, 0.2)',
-                    'rgba(153, 102, 255, 0.2)'
+                    'rgba(75, 192, 192, 0.2)',  // Implemented Sites
+                    'rgba(54, 162, 235, 0.2)',  // Ready
+                    'rgba(255, 159, 64, 0.2)',  // Blocked by Parent
                 ],
                 borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
                     'rgba(75, 192, 192, 1)',
-                    'rgba(153, 102, 255, 1)'
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 159, 64, 1)',
                 ],
                 borderWidth: 1
             }]
@@ -662,43 +548,63 @@ function generateProgressBarChart() {
             }
         }
     });
-}
 
-function generateCompletionPieChart() {
-    const ctx = document.getElementById('completion-pie-chart').getContext('2d');
+    // Generate pie charts per region (one for each region)
+    const regions = ['Region 1', 'Region 2', 'Region 3', 'Region 4', 'Region 5'];
+    const regionData = [
+        { "implemented_sites_count": 1, "ready": 20, "total_blocked_by_parent": 40, "total_blocked_locally": 10 },
+        { "implemented_sites_count": 0, "ready": 15, "total_blocked_by_parent": 50, "total_blocked_locally": 5 },
+        { "implemented_sites_count": 1, "ready": 18, "total_blocked_by_parent": 30, "total_blocked_locally": 8 },
+        { "implemented_sites_count": 0, "ready": 10, "total_blocked_by_parent": 60, "total_blocked_locally": 15 },
+        { "implemented_sites_count": 0, "ready": 9, "total_blocked_by_parent": 33, "total_blocked_locally": 15 }
+    ];
 
-    if (pieChartInstance) {
-        pieChartInstance.destroy(); // Destroy existing chart if it exists
-    }
+    regionChartsContainer.innerHTML = ''; // Clear previous region charts
 
-    pieChartInstance = new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: ['Completed', 'In Progress', 'Pending'],
-            datasets: [{
-                label: 'Completion Status',
-                data: [25, 50, 25], // Sample data, replace with dynamic data as needed
-                backgroundColor: [
-                    'rgba(75, 192, 192, 0.6)',
-                    'rgba(255, 159, 64, 0.6)',
-                    'rgba(255, 99, 132, 0.6)'
-                ],
-                borderColor: [
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(255, 159, 64, 1)',
-                    'rgba(255, 99, 132, 1)'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
+    regions.forEach((region, index) => {
+        const canvas = document.createElement('canvas');
+        canvas.id = `region-progress-chart-${index}`;
+        regionChartsContainer.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        const regionInfo = regionData[index];
+
+        const chart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Implemented Sites', 'Ready', 'Blocked by Parent', 'Blocked Locally'],
+                datasets: [{
+                    label: `${region} Site Distribution`,
+                    data: [regionInfo.implemented_sites_count, regionInfo.ready, regionInfo.total_blocked_by_parent, regionInfo.total_blocked_locally],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.6)',  // Implemented Sites
+                        'rgba(54, 162, 235, 0.6)',  // Ready
+                        'rgba(255, 159, 64, 0.6)',  // Blocked by Parent
+                        'rgba(255, 99, 132, 0.6)'   // Blocked Locally
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        enabled: true
+                    }
                 }
             }
-        }
+        });
+
+        regionChartInstances.push(chart);
     });
 }
 

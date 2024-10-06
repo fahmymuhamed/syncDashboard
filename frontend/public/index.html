@@ -24,9 +24,6 @@
             <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
             <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
 
-            <h3>Selected Node Information</h3>
-            <p id="node-info-content">Hover over a node to see its information.</p>
-
             <h3>Search Node Information</h3>
             <form id="search-node-form">
                 <label for="search-node">Node Name:</label>
@@ -43,13 +40,29 @@
                 <label for="node-id">Node ID:</label>
                 <input type="text" id="node-id" name="node-id" placeholder="Enter Node ID" required>
 
-                <label for="node-name">Node Name:</label>
-                <input type="text" id="node-name" name="node-name" placeholder="Enter New Name" required>
+                <button type="button" id="fetch-node-data">Fetch Node Data</button>
 
-                <label for="node-type">Node Type:</label>
-                <input type="text" id="node-type" name="node-type" placeholder="Enter New Type">
+                <div id="update-fields" style="display: none;">
+                    <label for="transport-sync-status">Transport Sync Status:</label>
+                    <select id="transport-sync-status" name="transport-sync-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
 
-                <button type="submit">Update Node</button>
+                    <label for="transmission-sync-status">Transmission Sync Status:</label>
+                    <select id="transmission-sync-status" name="transmission-sync-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+
+                    <label for="site-doable-status">Site Doable Status:</label>
+                    <select id="site-doable-status" name="site-doable-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+
+                    <button type="submit">Update Node</button>
+                </div>
             </form>
         </div>
 
@@ -71,8 +84,12 @@
     <div id="main-content">
         <h1 id="main-content-title">Tree Visualization</h1>
         <div id="diagram"></div>
-        <canvas id="progress-bar-chart" style="display:none; max-width: 100%;"></canvas> <!-- Bar Chart -->
-        <canvas id="completion-pie-chart" style="display:none; max-width: 100%;"></canvas> <!-- Pie Chart -->
+        <div id="chart-container" style="display:none;">
+            <canvas id="overall-progress-chart" style="max-width: 70%;"></canvas> <!-- Overall Progress Chart -->
+            <div id="region-charts-container" style="margin-top: 20px;max-width: 30%;"> <!-- Container for Region Pie Charts -->
+                <!-- Individual region charts will be appended here by JavaScript -->
+            </div>
+        </div>
     </div>
 
     <script src="/js/script.js"></script>
