@@ -6,7 +6,7 @@ let regionChartInstances = []; // Array to store Chart.js instances for region-w
 
 // Color mapping for Soln values
 const solnColorMap = {
-    'Local to GM': '#000000',       // black
+    'Local to GM': '#DCDCDC',       // black
     'Dedicated DF': '#808080',      // Gray
     'In-Band': '#008000',           // Green
     'Local to DWDM': '#FFA500',     // Orange
@@ -214,8 +214,17 @@ function createTree(data) {
 
     // Add circles to represent nodes
     node.append("circle")
-        .attr("r", d => d.data.local_site_domain === 'DWDM' ? 0 : 5)  // Set circle radius to 0 for DWDM domain
+        .attr("r", d => d.data.local_site_domain != 'IPMPLS' ? 0 : 5)  // Set circle radius to 0 for DWDM domain
         .style("fill", d => currentView === 'blockTypes' ? d.data.implementation_color : d.data.design_color );
+
+        // Add a distinct symbol (e.g., star) for nodes "Local to DWDM" to represent the Grand Master clock
+    node.filter(d => d.data.local_site_domain === 'REGION')  // Filter nodes with "Local to DWDM"
+        .append("path")
+        .attr("d", d3.symbol().type(d3.symbolWye).size(60))  // Triangle symbol
+        .attr("transform", "translate(0, 0)")  // Position the symbol to the right of the circle
+        .style("fill", d => d.data.local_transmission_in_sync ? "LimeGreen" : "RoyalBlue")  // Dedicated color for the DWDM
+        .style("stroke", "steelblue")
+        .style("stroke-width", 0.01);
 
     // Add a distinct symbol (e.g., star) for nodes "Local to DWDM" to represent the Grand Master clock
     node.filter(d => d.data.local_site_domain === 'DWDM')  // Filter nodes with "Local to DWDM"

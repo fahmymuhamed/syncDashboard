@@ -21,23 +21,32 @@ exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(ob
 
 # Define the roots dynamically where local_sync_solution == 'Local to GM'
 roots = df[df['local_sync_solution'] == 'Local to GM']['local_site_name'].tolist()
+regions = df[df['local_sync_solution'] == 'Local to GM']['local_site_region'].unique().tolist()
+
+region_nodes = {}
+
+# Create region nodes under GPS
+for region in regions:
+    region_nodes[region] = Node(region, parent=gps_root, local_site_domain="REGION", local_sync_solution= "Imaginary Link", local_transmission_in_sync=True, local_site_doable=True, design_color='black', implementation_color='black')
 
 # Create a function to build the hierarchical structure dynamically using anytree
-def build_tree(root_name, parent_node=None):
+def build_tree(grand_master_site_name, root_name, parent_node=None):
     # Get information for the current root node
     site_info = df[df['local_site_name'] == root_name].iloc[0].to_dict()
     # Create a node for the current site with attributes
-    node = Node(root_name, parent=parent_node, design_color='black', implementation_color='black', **{k: v for k, v in site_info.items()})
+    node = Node(root_name, parent=parent_node, grand_master_site_name= grand_master_site_name, design_color='black', implementation_color='black', **{k: v for k, v in site_info.items()})
     # Recursively build child nodes
     children_df = df[df['upper_sync_source_site_name'] == root_name]
     children = children_df['local_site_name'].tolist()
     for child in children:
-        build_tree(child, node)
+        build_tree(grand_master_site_name, child, node)
     return node
 
 # Build the tree for each root and attach it under GPS
 for root in roots:
-    build_tree(root, gps_root)
+    region = df[df['local_site_name'] == root]['local_site_region'].values[0]
+    # Attach the root under the appropriate region node
+    build_tree(root, root, region_nodes[region])
 
 # Function to determine if a node is blocked by its parent
 def is_blocked_by_parent_sync(node):
@@ -90,6 +99,46 @@ def apply_node_colors(root):
         else:
             node.implementation_color = 'Black'  # Dropped from logic
             node.design_color = 'Black'  # Dropped from logic
+
+
+# Function to determine if a node is blocked by its parent
+
+def has_dependency_on_parent(node):
+    current_node = node
+    while current_node.parent:
+        parent = current_node.parent
+        current_solution = getattr(current_node, 'local_sync_solution', None)
+        parent_solution = getattr(parent, 'local_sync_solution', None)
+        if current_solution in ["Dedicated DF", "In-Band"] or parent_solution in ["Dedicated DF", "In-Band"]:
+            return True
+        current_node = parent
+    return False
+
+
+# Function to determine the dependencies list
+def dependencies_list(node):
+    dependencies = set()
+    current_node = node
+    local_site_name = getattr(node, 'local_site_name', None)
+    local_site_domain = getattr(node, 'local_site_domain', None)
+    local_sync_solution = getattr(current_node, 'local_sync_solution', None)
+
+    if local_site_domain == "IPMPLS":
+        if local_sync_solution in ["Local to GM", "Local to DWDM"] and not has_dependency_on_parent(current_node):
+            dependencies.add(f"{getattr(current_node, 'local_site_name', None)}_DWDM")
+        elif has_dependency_on_parent(current_node):
+            if local_sync_solution in ["Local to GM", "Local to DWDM"]:
+                dependencies.add(f"{getattr(current_node, 'local_site_name', None)}_DWDM")
+            while current_node.parent:
+                parent = current_node.parent
+                current_solution = getattr(current_node, 'local_sync_solution', None)
+                parent_solution = getattr(parent, 'local_sync_solution', None)
+                if current_solution in ["Dedicated DF", "In-Band"] or parent_solution in ["Dedicated DF", "In-Band"]:
+                    dependencies.add(f"{getattr(parent, 'local_site_name', None)}_IPMPLS")
+                    break
+                current_node = parent
+
+    return [local_site_name] + [dependency for dependency in dependencies]
 
 # Calculate project statistics based on the nodes
 def calculate_project_stats(root):
@@ -161,7 +210,7 @@ def get_report():
 
     # Simulate different reports (you'll replace this with your actual logic)
     if report_type == 'blockedByParent':
-        data = [['Site A', 'Blocked By Parent 1'], ['Site B', 'Blocked By Parent 2']]
+        data = [dependencies_list(node) for node in LevelOrderIter(gps_root)]
     elif report_type == 'sowIssuedNoParent':
         data = [['Site C', 'SOW Issued, No Parent']]
     elif report_type == 'sowIssuedBlockedParent':
