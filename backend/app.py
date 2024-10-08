@@ -146,7 +146,7 @@ def dependencies_list(node):
                     break
                 current_node = parent
 
-    return local_site_name, dwdm_dependency, ipmpls_dependency
+    return [local_site_name, dwdm_dependency, ipmpls_dependency]
 
 # Calculate project statistics based on the nodes
 def calculate_project_stats(root):
@@ -218,7 +218,7 @@ def get_report():
 
     # Simulate different reports (you'll replace this with your actual logic)
     if report_type == 'blockedByParent':
-        data = [[item for item in dependencies_list(node)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
+        data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
     elif report_type == 'masterSheet':
         data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_site_name', None), getattr(node, 'local_sync_solution', None),
                  getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
