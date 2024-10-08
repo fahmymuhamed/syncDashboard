@@ -102,9 +102,9 @@ document.getElementById('update-node-form').addEventListener('submit', function 
     e.preventDefault(); // Prevent form from submitting the default way
 
     const nodeId = document.getElementById('node-id').value;
-    const transportSyncStatus = document.getElementById('transport-sync-status').value;
-    const transmissionSyncStatus = document.getElementById('transmission-sync-status').value;
-    const siteDoableStatus = document.getElementById('site-doable-status').value;
+    const transportSyncStatus = document.getElementById('transport-sync-status').value  === 'true';
+    const transmissionSyncStatus = document.getElementById('transmission-sync-status').value === 'true';
+    const siteDoableStatus = document.getElementById('site-doable-status').value === 'true';
 
     updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus);
 });
@@ -127,26 +127,49 @@ function fetchNodeData(nodeId) {
     }
 }
 
-function updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus) {
+async function updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus) {
     if (!treeDataCache) {
         console.error('Tree data not loaded.');
         return;
     }
 
-    // Find the node by ID and update its information
+    // Find the node by ID and update its information locally
     const node = findNodeById(treeDataCache, nodeId);
     if (node) {
         node.local_ip_transport_in_sync = transportSyncStatus;
         node.local_transmission_in_sync = transmissionSyncStatus;
         node.local_site_doable = siteDoableStatus;
 
-        // Re-render the tree with updated data
-        d3.select("svg").remove();
-        const svg = d3.select("#diagram").append("svg")
-            .attr("width", 3000)
-            .attr("height", 3000);
+        // Update the UI
+        setView(currentView)
 
-        createTree(treeDataCache);
+        // Prepare the payload for backend update
+        const payload = {
+            local_site_name: nodeId,
+            local_ip_transport_in_sync: transportSyncStatus === true,
+            local_transmission_in_sync: transmissionSyncStatus === true,
+            local_site_doable: siteDoableStatus === true
+        };
+
+        try {
+            // Send the JSON to the backend
+            const response = await fetch('http://localhost:5000/api/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.statusText}`);
+            }
+
+            const responseData = await response.json();
+            console.log('Update successful:', responseData);
+        } catch (error) {
+            console.error('Failed to update node information:', error);
+        }
     } else {
         console.error('Node not found');
     }
