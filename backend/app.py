@@ -1,5 +1,5 @@
 import pandas as pd
-from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
+from anytree import Node, LevelOrderIter
 from anytree.exporter import JsonExporter
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
@@ -71,9 +71,9 @@ def is_blocked_by_parent_design(node):
     return False
 
 # Function to apply colors to the nodes based on certain criteria
-def apply_node_colors(root):
+def apply_node_colors(tree_root):
 
-    for node in LevelOrderIter(root):
+    for node in LevelOrderIter(tree_root):
         if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             node.implementation_color = 'LimeGreen'  # In Sync
             node.design_color = 'LimeGreen'  # In Sync
@@ -149,7 +149,7 @@ def dependencies_list(node):
     return [local_site_name, dwdm_dependency, ipmpls_dependency]
 
 # Calculate project statistics based on the nodes
-def calculate_project_stats(root):
+def calculate_project_stats(tree_root):
     result = {
         "in_sync_sites_count": 0,
         "pending_parents_sync": 0,
@@ -165,7 +165,7 @@ def calculate_project_stats(root):
         "total_doable_no_sow": 0
     }
 
-    for node in LevelOrderIter(root):
+    for node in LevelOrderIter(tree_root):
 
         if getattr(node, 'local_site_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             result["in_sync_sites_count"] += 1
@@ -217,6 +217,7 @@ def get_report():
     report_type = request.args.get('type')
 
     # Simulate different reports (you'll replace this with your actual logic)
+    data = [['Default', 'Default']]
     if report_type == 'blockedByParent':
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
     elif report_type == 'masterSheet':
