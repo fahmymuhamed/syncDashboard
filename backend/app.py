@@ -109,7 +109,9 @@ def has_dependency_on_parent(node):
         parent = current_node.parent
         current_solution = getattr(current_node, 'local_sync_solution', None)
         parent_solution = getattr(parent, 'local_sync_solution', None)
-        if current_solution in ["Dedicated DF", "In-Band"] or parent_solution in ["Dedicated DF", "In-Band"]:
+        if current_solution in ["Dedicated DF", "In-Band"]  and getattr(current_node, 'local_site_domain', None) == "IPMPLS":
+            return True
+        elif parent_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_site_domain', None) == "IPMPLS":
             return True
         current_node = parent
     return False
@@ -117,28 +119,34 @@ def has_dependency_on_parent(node):
 
 # Function to determine the dependencies list
 def dependencies_list(node):
-    dependencies = set()
     current_node = node
     local_site_name = getattr(node, 'local_site_name', None)
     local_site_domain = getattr(node, 'local_site_domain', None)
     local_sync_solution = getattr(current_node, 'local_sync_solution', None)
+    dwdm_dependency = None
+    ipmpls_dependency = None
 
     if local_site_domain == "IPMPLS":
         if local_sync_solution in ["Local to GM", "Local to DWDM"] and not has_dependency_on_parent(current_node):
-            dependencies.add(f"{getattr(current_node, 'local_site_name', None)}_DWDM")
+            dwdm_dependency = f"{getattr(current_node, 'local_site_name', None)}_DWDM"
         elif has_dependency_on_parent(current_node):
             if local_sync_solution in ["Local to GM", "Local to DWDM"]:
-                dependencies.add(f"{getattr(current_node, 'local_site_name', None)}_DWDM")
+                dwdm_dependency = f"{getattr(current_node, 'local_site_name', None)}_DWDM"
+            elif local_sync_solution in ["Dedicated DF"] and getattr(current_node.parent, 'local_site_domain', None) == "DWDM":
+                dwdm_dependency = f"{getattr(current_node.parent, 'local_site_name', None)}_DWDM"
             while current_node.parent:
                 parent = current_node.parent
                 current_solution = getattr(current_node, 'local_sync_solution', None)
                 parent_solution = getattr(parent, 'local_sync_solution', None)
-                if current_solution in ["Dedicated DF", "In-Band"] or parent_solution in ["Dedicated DF", "In-Band"]:
-                    dependencies.add(f"{getattr(parent, 'local_site_name', None)}_IPMPLS")
+                if current_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_site_domain', None) == "IPMPLS":
+                    ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
+                    break
+                elif parent_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_site_domain', None) == "IPMPLS":
+                    ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
                     break
                 current_node = parent
 
-    return [local_site_name] + [dependency for dependency in dependencies]
+    return local_site_name, dwdm_dependency, ipmpls_dependency
 
 # Calculate project statistics based on the nodes
 def calculate_project_stats(root):
@@ -210,9 +218,10 @@ def get_report():
 
     # Simulate different reports (you'll replace this with your actual logic)
     if report_type == 'blockedByParent':
-        data = [dependencies_list(node) for node in LevelOrderIter(gps_root)]
-    elif report_type == 'sowIssuedNoParent':
-        data = [['Site C', 'SOW Issued, No Parent']]
+        data = [[item for item in dependencies_list(node)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
+    elif report_type == 'masterSheet':
+        data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_site_name', None), getattr(node, 'local_sync_solution', None),
+                 getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_site_domain', None)=="IPMPLS" ]
     elif report_type == 'sowIssuedBlockedParent':
         data = [['Site D', 'SOW Issued, Blocked Parent']]
     elif report_type == 'noBlockageNoInBand':
