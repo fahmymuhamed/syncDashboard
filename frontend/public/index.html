@@ -3,36 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tree Visualization Dashboard</title>
+    <title>Tree Visualization with CSV Reports</title>
+    <link rel="stylesheet" href="/css/styles.css">
     <script src="https://d3js.org/d3.v6.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Include Chart.js -->
 </head>
 <body>
-    <h1>Tree Visualization Dashboard</h1>
+    <div id="fixed-column">
+        <!-- Navigation Menu -->
+        <h2>Navigation</h2>
+        <ul>
+            <li><button onclick="showSection('view-selection')">View Selection</button></li>
+            <li><button onclick="showSection('node-update')">Node Data Update</button></li>
+            <li><button onclick="showSection('reports')">Reports</button></li>
+        </ul>
 
-    <!-- Controls for views and reports -->
-    <div id="controls">
-        <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
-        <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
-        <br>
-        <label for="report-dropdown"></label><select id="report-dropdown">
-            <option value="blockedByParent">Site Blocked By Parents</option>
-            <option value="sowIssuedNoParent">SOW Issued No Parents</option>
-            <option value="sowIssuedBlockedParent">SOW Issued with Blocked Parents</option>
-            <option value="noBlockageNoInBand">No Blockage & No In-Band</option>
-            <option value="transportPorts">Transport Ports Report</option>
-        </select>
+        <!-- View Selection & Node Information Section -->
+        <div id="view-selection" class="section">
+            <h3>View Selection</h3>
+            <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
+            <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
+
+            <h3>Search Node Information</h3>
+            <form id="search-node-form">
+                <label for="search-node">Node Name:</label>
+                <input type="text" id="search-node" name="search-node" placeholder="Enter Node Name">
+                <button type="submit">Search</button>
+            </form>
+            <div id="search-result"></div>
+        </div>
+
+        <!-- Node Update Section -->
+        <div id="node-update" class="section" style="display:none;">
+            <h3>Update Node Information</h3>
+            <form id="update-node-form">
+                <label for="node-id">Node ID:</label>
+                <input type="text" id="node-id" name="node-id" placeholder="Enter Node ID" required>
+
+                <button type="button" id="fetch-node-data">Fetch Node Data</button>
+
+                <div id="update-fields" style="display: none;">
+                    <label for="transport-sync-status">Transport Sync Status:</label>
+                    <select id="transport-sync-status" name="transport-sync-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+
+                    <label for="transmission-sync-status">Transmission Sync Status:</label>
+                    <select id="transmission-sync-status" name="transmission-sync-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+
+                    <label for="site-doable-status">Site Doable Status:</label>
+                    <select id="site-doable-status" name="site-doable-status">
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+
+                    <button type="submit">Update Node</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Reports Section -->
+        <div id="reports" class="section" style="display:none;">
+            <h3>Reports</h3>
+            <label for="report-dropdown"></label><select id="report-dropdown">
+                <option value="blockedByParent">Site Blocked By Parents</option>
+                <option value="masterSheet">Design Master Sheet</option>
+                <option value="sowIssuedBlockedParent">SOW Issued with Blocked Parents</option>
+                <option value="noBlockageNoInBand">No Blockage & No In-Band Report</option>
+                <option value="transportPorts">Transport Ports Report</option>
+            </select>
+            <button id="generate-report" onclick="generateReport()">Generate Report</button>
+            <button id="export-svg" onclick="exportSVG()">Export as SVG</button>
+        </div>
     </div>
 
-    <!-- Tree Visualization -->
-    <div id="diagram"></div>
-
-    <!-- Progress Charts -->
-    <div id="charts">
-        <canvas id="progressChart"></canvas>
+    <div id="main-content">
+        <h1 id="main-content-title">Tree Visualization</h1>
+        <div id="diagram"></div>
+        <div id="chart-container" style="display:none;">
+            <canvas id="overall-progress-chart" style="max-width: 70%;"></canvas> <!-- Overall Progress Chart -->
+            <div id="region-charts-container" style="margin-top: 20px;max-width: 30%;"> <!-- Container for Region Pie Charts -->
+                <!-- Individual region charts will be appended here by JavaScript -->
+            </div>
+        </div>
     </div>
 
-    <script src="js/main.js"></script>
+    <script src="/js/script.js"></script>
 </body>
 </html>
