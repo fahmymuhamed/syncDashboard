@@ -1,6 +1,10 @@
 import pandas as pd
 from anytree import Node, LevelOrderIter
 from anytree.exporter import JsonExporter
+from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
+import pandas as pd
+from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
+from anytree.exporter import JsonExporter
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
 import logging
@@ -14,27 +18,21 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 CORS(app)
 
-import pandas as pd
-from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
-from anytree.exporter import JsonExporter
 import json
 import os
 
 # Load configuration from environment variables
-data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.3.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
+data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.6.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
 
 # Load the Excel data once at startup to avoid loading repeatedly
-df = pd.read_excel(data_file_path, sheet_name='Sheet2', dtype=object)
+df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
 
 # Build the main GPS root node
 gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black')
 
 # Create JsonExporter to export tree in JSON format
 exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(obj, '__dict__', str(obj)))
-import pandas as pd
-from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
-from anytree.exporter import JsonExporter
-import json
+
 
 # Define the roots dynamically where local_sync_solution == 'Local to GM'
 roots = df[df['local_sync_solution'] == 'GNSS']['local_node_name'].tolist()
@@ -236,6 +234,19 @@ def get_tree():
         logging.error(f"Error exporting tree: {e}")
         return jsonify({"error": "Unable to export tree"}), 500
 
+
+# API to serve region-specific nodes
+@app.route('/api/tree/region/<region>', methods=['GET'])
+def get_region_nodes(region):
+    try:
+        if region in region_nodes:
+            # Exporting the specified region node
+            return exporter.export(region_nodes[region])
+        else:
+            return jsonify({"error": "Region not found"}), 404
+    except Exception as e:
+        logging.error(f"Error exporting region nodes: {e}")
+        return jsonify({"error": "Unable to export region nodes"}), 500
 
 # API to update the dataframe and Excel file
 @app.route('/api/update', methods=['POST'])

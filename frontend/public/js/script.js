@@ -18,16 +18,20 @@ let regionChartInstances = [];
 
 // Color Mappings
 const solnColorMap = {
-    'Local to GM': '#DCDCDC',       // black
+    'DWDM': '#DC143C',
+    'Local to GM': '#FFA500',       // DarkSlateGrey
     'Dedicated DF': '#808080',      // Gray
     'In-Band': '#008000',           // Green
     'Local to DWDM': '#FFA500',     // Orange
+    'MPLS Collocated': '#00008B',     // Orange
 };
 
 const solnLegendColorMap = {
-    'Dedicated DF (New)': '#808080', // Gray
+    'Dedicated DF To MPLS': '#808080', // Gray
+    'MPLS Collocated': '#00008B', // DarkBlue
+    'Local to DWDM': '#FFA500', // Orange
     'DF Uplink (Existing)': '#008000', // Green
-    'DWDM': '#FFA500', // Orange
+    'Inside Transmission': '#DC143C', // Internal Transmission
 };
 
 // Debounce Function
@@ -208,98 +212,190 @@ function findNodeById(node, id) {
 }
 
 function createTree(data) {
-    const width = 12000;
-    const height = 12000;
-    const radius = Math.min(width, height) / 2;
-    const tree = d3.tree().size([2 * Math.PI, radius - 300]).separation((a, b) => {
-        if (a.data.local_site_name && b.data.local_site_name && a.data.local_site_name === b.data.local_site_name) {
-            return 0.5; // Decrease separation for nodes in the same location
-        }
-        return (a.parent === b.parent ? 1 : 2) / a.depth;
-    });
+    // Define the dimensions for A1 size paper at 300 DPI (dots per inch)
+    // 300 DPI is standard for high-quality prints
+    const dpi = 900;
+    const widthInches = 33.1;
+    const heightInches = 23.4;
+    const width = widthInches * dpi;
+    const height = heightInches * dpi;
+    const margin = { top: 50, right: 200, bottom: 50, left: 200 };
+
+    // Create the tree layout with adjusted size
+    const tree = d3.tree().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+
     const svg = d3.select('#diagram').append('svg')
         .attr('width', width)
         .attr('height', height)
-        .call(d3.zoom().on('zoom', (event) => {
-            svg.attr('transform', event.transform);
-        }))
         .append('g')
-        .attr('transform', `translate(${width / 2},${height / 2})`);
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
     let nodes = d3.hierarchy(data, d => d.children);
     nodes = tree(nodes);
+
+    // Adjust the link paths
     const link = svg.append('g')
         .selectAll('.link')
         .data(nodes.links().filter(d => d.source.data.name !== 'GPS'))
         .enter().append('path')
         .attr('class', 'link')
         .attr('id', (d, i) => 'linkPath' + i) // Give each link an ID for the text path
-        .attr('d', d3.linkRadial().angle(d => d.x).radius(d => d.y))
+        .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
         .style('stroke', d => solnColorMap[d.target.data.local_sync_solution] || '#888')
-        .style('stroke-opacity', 1)
+        .style('stroke-width', 2) // Adjust stroke width for better visibility
         .style('fill', 'none');
 
-    // Append the text to follow the path
+    // Append the text labels to the links
     svg.append('g')
         .selectAll('.link-text')
         .data(nodes.links().filter(d => d.source.data.name !== 'GPS'))
         .enter().append('text')
         .attr('class', 'link-text')
-        .attr('dy', -3) // Adjust the vertical position relative to the path
+        .attr('dy', -5)
         .append('textPath')
         .attr('xlink:href', (d, i) => '#linkPath' + i) // Reference the link path
-        .attr('startOffset', '50%') // Center the text along the path.attr('dy', '0.31em')
-        .style('text-anchor', 'middle') // Center the text at the offset
+        .attr('startOffset', '50%') // Center the text along the path
+        .attr('text-anchor', 'middle')
+        .style('font-size', '19px') // Adjust font size for print
         .text(d => `${d.target.data.upper_sync_source_port} <> ${d.target.data.local_node_port}`);
 
+    // Adjust the nodes
     const node = svg.append('g')
         .selectAll('.node')
         .data(nodes.descendants().filter(d => d.data.name !== 'GPS'))
         .enter().append('g')
         .attr('class', d => 'node' + (d.children ? ' node--internal' : ' node--leaf'))
-        .attr('transform', d => {
-            if (d.data.local_site_name && d.parent && d.parent.data.local_site_name === d.data.local_site_name) {
-                // Adjust the position for nodes in the same location
-                return `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y - 0},0)`;
-            }
-            return `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y},0)`;
-        });
+        .attr('transform', d => `translate(${d.y},${d.x})`);
+
     node.append('circle')
-        .attr('r', d => d.data.local_node_domain !== 'IPMPLS' ? 0 : 5)
+        .attr('r', d => d.data.local_node_domain !== 'IPMPLS' ? 0 : 12) // Adjust node radius for better visibility
         .style('fill', d => currentView === VIEWS.BLOCK_TYPES ? d.data.implementation_color : d.data.design_color);
 
-    node.filter(d => d.data.local_node_domain === 'DWDM' && d.data.local_sync_solution === 'GNSS')  // Filter nodes with "Local to GM"
-        .append("path")
-        .attr("d", d3.symbol().type(d3.symbolSquare).size(200))  // Square symbol
-        .attr('transform', 'translate(0, 0)')
-        .style('fill', 'RoyalBlue')
-        .style('stroke', 'steelblue')
-        .style('stroke-width', 0.01);
-    node.filter(d => d.data.local_node_domain === 'DWDM')
+    // Add symbols for specific nodes
+    node.filter(d => d.data.local_node_domain === 'DWDM' && d.data.local_sync_solution === 'GNSS')
         .append('path')
-        .attr('d', d3.symbol().type(d3.symbolTriangle).size(60))
-        .attr('transform', 'translate(0, 0)')
-        .style('fill', 'RoyalBlue')
-        .style('stroke', 'steelblue')
-        .style('stroke-width', 0.01);
+        .attr('d', d3.symbol().type(d3.symbolSquare).size(250))
+        .style('fill', 'RoyalBlue');
+
+    node.filter(d => d.data.local_node_domain === 'DWDM' && d.data.local_sync_solution !== 'GNSS')
+        .append('path')
+        .attr('d', d3.symbol().type(d3.symbolTriangle).size(250))
+        .style('fill', 'RoyalBlue');
+
+    // Add text labels to nodes
     node.append('text')
-        .attr('dy', '0.31em')
-        .attr('x', d => d.x < Math.PI ? 6 : -6)
-        .attr('text-anchor', d => d.x < Math.PI ? 'start' : 'end')
-        .attr('transform', d => d.x >= Math.PI ? 'rotate(180)' : null)
+        .attr('dy', 3)
+        .attr('x', d => d.children ? -10 : 10)
+        .attr('text-anchor', d => d.children ? 'end' : 'start')
+        .style('font-size', '24px') // Adjust font size for print
         .text(d => d.data.name);
+
+    // Implement zoom and pan for better navigation
+    const zoom = d3.zoom()
+        .scaleExtent([0.5, 2]) // Adjust scale extent for print size
+        .on('zoom', function (event) {
+            svg.attr('transform', event.transform);
+        });
+
+    d3.select('#diagram').select('svg').call(zoom);
+
+    // Optional: Fit the tree to the viewport
+    // This ensures the entire tree fits within the SVG area
+    const bounds = svg.node().getBBox();
+    const fullWidth = bounds.width + margin.left + margin.right;
+    const fullHeight = bounds.height + margin.top + margin.bottom;
+    const scale = Math.min(width / fullWidth, height / fullHeight);
+    const translateX = (width - fullWidth * scale) / 2;
+    const translateY = (height - fullHeight * scale) / 2;
+
+    d3.select('#diagram').select('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+
+    // Interactivity for nodes
     node.on('mouseover', function (event, d) {
+        // Update information display
         document.getElementById('search-result').innerText = `Node Name: ${d.data.name}\nSync Solution: ${d.data.local_sync_solution || 'N/A'}\nRouter Platform: ${d.data.local_ip_transport_site_router_platform || 'N/A'}\nRouter Layer: ${d.data.local_ip_transport_site_router_layer || 'N/A'}\nUpper Sync Source: ${d.data.upper_sync_source_site_name || 'N/A'}`;
+
+        // Highlight related nodes and links
         const ancestors = getAncestors(d);
         const descendants = getDescendants(d);
         const relatedNodes = [...ancestors, d, ...descendants];
         node.style('opacity', o => relatedNodes.includes(o) ? 1 : 0.2);
         link.style('opacity', o => relatedNodes.includes(o.source) && relatedNodes.includes(o.target) ? 1 : 0.2);
-    }).on('mousemove', debounce(function (event) {
-        // Tooltip logic here
-    }, 100)).on('mouseout', function () {
+    }).on('mouseout', function () {
         node.style('opacity', 1);
         link.style('opacity', 1);
     });
+
+        const nodeLegend = svg.selectAll(".node-legend")
+        .data([
+            { label: `IPMPLS Router: `, color: 'Red' },
+            { label: 'Grand Master Clock', color: 'RoyalBlue' },
+            { label: 'DWDM', color: 'RoyalBlue' }
+        ])
+        .enter().append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(${width - 850},${height - 660 + i * 35})`);
+
+    nodeLegend.append("path")
+        .attr("d", d => {
+            if (d.label === 'Grand Master Clock') {
+                return d3.symbol().type(d3.symbolSquare).size(200)();  // Diamond for Grand Master Clock
+            } else if (d.label === 'DWDM') {
+                return d3.symbol().type(d3.symbolTriangle).size(250)();  // Square for DWDM
+            } else {
+                return d3.symbol().type(d3.symbolCircle).size(250)();  // Circle for other labels
+            }
+        })
+        .attr("fill", d => d.color)
+        .attr("cx", 9)
+        .attr("cy", 0);
+
+    nodeLegend.append("text")
+        .attr("x", 25)
+        .attr("y", 5)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .text(d => d.label);
+
+    svg.append("text")
+        .attr("x", width - 850)
+        .attr("y", height - 700)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .style("font-weight", "bold")
+        .text("Node Legend:");
+
+    const linkLegend = svg.selectAll(".link-legend")
+        .data(Object.keys(solnLegendColorMap))
+        .enter().append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(${width - 850},${height - 660 + (i + 7) * 30})`);
+
+    linkLegend.append("line")
+        .attr("x1", 0)
+        .attr("y1", 0)
+        .attr("x2", 18)
+        .attr("y2", 0)
+        .style("stroke-width", 6)
+        .style("stroke", d => solnLegendColorMap[d]);
+
+    linkLegend.append("text")
+        .attr("x", 25)
+        .attr("y", 5)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .text(d => d);
+
+    svg.append("text")
+        .attr("x", width - 850)
+        .attr("y", height - 490)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .style("font-weight", "bold")
+        .text("Link Legend:");
 }
 
 // Handle Node Search Form Submission
