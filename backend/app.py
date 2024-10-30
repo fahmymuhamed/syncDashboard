@@ -21,10 +21,10 @@ import json
 import os
 
 # Load configuration from environment variables
-data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.3.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
+data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.6.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
 
 # Load the Excel data once at startup to avoid loading repeatedly
-df = pd.read_excel(data_file_path, sheet_name='Sheet2', dtype=object)
+df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
 
 # Build the main GPS root node
 gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black')
@@ -225,17 +225,28 @@ def calculate_project_stats(tree_root):
 
     return result
 
-
+apply_node_colors(gps_root)
 # API to serve tree data
 @app.route('/api/tree', methods=['GET'])
 def get_tree():
     try:
-        apply_node_colors(gps_root)
         return exporter.export(gps_root)
     except Exception as e:
         logging.error(f"Error exporting tree: {e}")
         return jsonify({"error": "Unable to export tree"}), 500
 
+# API to serve region-specific nodes
+@app.route('/api/tree/region/<region>', methods=['GET'])
+def get_region_nodes(region):
+    try:
+        if region in region_nodes:
+            # Exporting the specified region node
+            return exporter.export(region_nodes[region])
+        else:
+            return jsonify({"error": "Region not found"}), 404
+    except Exception as e:
+        logging.error(f"Error exporting region nodes: {e}")
+        return jsonify({"error": "Unable to export region nodes"}), 500
 
 # API to update the dataframe and Excel file
 @app.route('/api/update', methods=['POST'])
