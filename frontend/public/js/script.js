@@ -214,7 +214,7 @@ function findNodeById(node, id) {
 function createTree(data) {
     // Define the dimensions for A1 size paper at 300 DPI (dots per inch)
     // 300 DPI is standard for high-quality prints
-    const dpi = 900;
+    const dpi = 1600;
     const widthInches = 33.1;
     const heightInches = 23.4;
     const width = widthInches * dpi;
@@ -244,20 +244,6 @@ function createTree(data) {
         .style('stroke', d => solnColorMap[d.target.data.local_sync_solution] || '#888')
         .style('stroke-width', 2) // Adjust stroke width for better visibility
         .style('fill', 'none');
-
-    // Append the text labels to the links
-    svg.append('g')
-        .selectAll('.link-text')
-        .data(nodes.links().filter(d => d.source.data.name !== 'GPS'))
-        .enter().append('text')
-        .attr('class', 'link-text')
-        .attr('dy', -5)
-        .append('textPath')
-        .attr('xlink:href', (d, i) => '#linkPath' + i) // Reference the link path
-        .attr('startOffset', '50%') // Center the text along the path
-        .attr('text-anchor', 'middle')
-        .style('font-size', '19px') // Adjust font size for print
-        .text(d => `${d.target.data.upper_sync_source_port} <> ${d.target.data.local_node_port}`);
 
     // Adjust the nodes
     const node = svg.append('g')

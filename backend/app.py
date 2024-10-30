@@ -79,7 +79,7 @@ def is_blocked_by_parent_sync(node):
     while current_node.parent:
         parent = current_node.parent
         if (not getattr(parent, 'local_ip_transport_in_sync', False) and getattr(parent, 'local_node_domain', None) == "IPMPLS" and
-                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
+                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band", "MPLS Collocated"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band", "MPLS Collocated"])):
             return True
         current_node = parent
     return False
@@ -90,7 +90,7 @@ def is_blocked_by_parent_design(node):
     while current_node.parent:
         parent = current_node.parent
         if (not getattr(parent, 'local_node_doable', False) and getattr(parent, 'local_node_domain', None) == "IPMPLS" and
-                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band"])):
+                (getattr(current_node, 'local_sync_solution', None) in ["Dedicated DF", "In-Band", "MPLS Collocated"] or getattr(parent, 'local_sync_solution', None) in ["Dedicated DF", "In-Band", "MPLS Collocated"])):
             return True
         current_node = parent
     return False
@@ -133,9 +133,9 @@ def has_dependency_on_parent(node):
         parent = current_node.parent
         current_solution = getattr(current_node, 'local_sync_solution', None)
         parent_solution = getattr(parent, 'local_sync_solution', None)
-        if current_solution in ["Dedicated DF", "In-Band"]  and getattr(current_node, 'local_node_domain', None) == "IPMPLS":
+        if current_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"]  and getattr(current_node, 'local_node_domain', None) == "IPMPLS":
             return True
-        elif parent_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
+        elif parent_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
             return True
         current_node = parent
     return False
@@ -162,10 +162,10 @@ def dependencies_list(node):
                 parent = current_node.parent
                 current_solution = getattr(current_node, 'local_sync_solution', None)
                 parent_solution = getattr(parent, 'local_sync_solution', None)
-                if current_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
+                if current_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
                     ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
                     break
-                elif parent_solution in ["Dedicated DF", "In-Band"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
+                elif parent_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
                     ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
                     break
                 current_node = parent
