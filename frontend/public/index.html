@@ -10,16 +10,16 @@
 </head>
 <body>
     <div id="fixed-column">
-        <!-- Navigation Menu -->
-        <h2>Navigation</h2>
+        <!-- Navigation and Actions Section -->
+        <h2>Navigation & Actions</h2>
         <ul>
-            <li><button onclick="showSection('view-selection')">View Selection</button></li>
-            <li><button onclick="showSection('node-update')">Node Data Update</button></li>
-            <li><button onclick="exportSVG()">Reports</button></li>
+            <li><button onclick="setView('treeView')">View Selection</button></li>
+            <li><button onclick="setView('reportView')">Report</button></li>
+            <li><button onclick="exportSVG()">Print</button></li>
         </ul>
 
-        <!-- View Selection & Node Information Section -->
-        <div id="view-selection" class="section">
+        <!-- Combined View Section -->
+        <div id="combined-view" class="section">
             <h3>View Selection</h3>
             <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
             <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
@@ -31,10 +31,7 @@
                 <button type="submit">Search</button>
             </form>
             <div id="search-result"></div>
-        </div>
 
-        <!-- Node Update Section -->
-        <div id="node-update" class="section" style="display:none;">
             <h3>Update Node Information</h3>
             <form id="update-node-form">
                 <label for="node-id">Node ID:</label>
@@ -64,10 +61,7 @@
                     <button type="submit">Update Node</button>
                 </div>
             </form>
-        </div>
 
-        <!-- Reports Section -->
-        <div id="reports" class="section" style="display:none;">
             <h3>Reports</h3>
             <label for="report-dropdown"></label><select id="report-dropdown">
                 <option value="blockedByParent">Site Blocked By Parents</option>
@@ -78,6 +72,18 @@
             </select>
             <button id="generate-report" onclick="generateReport()">Generate Report</button>
             <button id="export-svg" onclick="exportSVG()">Export as SVG</button>
+            <h3>IPMPLS Data Overview</h3>
+            <div id="ipmpls-data-overview">
+                <!-- Data from Node.js server will be inserted here -->
+            </div>
+            <h3>Project Statistics</h3>
+            <div id="project-stats">
+                <p>IPMPLS InSync: <span id="inSyncSitesCount"></span></p>
+                <p>IPMPLS Blocked: <span id="totalBlockedLocally"></span> + Blocked by Parent: <span id="blockedByParentsDesign"></span></p>
+                <p>Pending Parent Sync: <span id="pendingParentsSync"></span></p>
+                <p>Pending Transmission: <span id="pendingTransmission"></span></p>
+                <p>IPMPLS Ready: <span id="readyByDesign"></span></p>
+            </div>
         </div>
     </div>
 

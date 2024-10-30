@@ -5,6 +5,7 @@ const VIEWS = {
     REPORT_VIEW: 'reportView'
 };
 
+
 // Cache Frequently Used Elements
 const diagram = document.getElementById('diagram');
 const chartContainer = document.getElementById('chart-container');
@@ -82,6 +83,7 @@ function setView(view) {
     }
 }
 
+
 function updateViewName() {
     const viewName = currentView === VIEWS.TREE_VIEW ? 'Tree View' : 'Project Status Report';
     //document.getElementById('view-selection').innerText = viewName;
@@ -97,12 +99,7 @@ function showTreeVisualization() {
 function showReportView() {
     diagram.style.display = 'none';
     chartContainer.style.display = 'block';
-    sidePane.style.display = 'none';
-}
-
-function displayProjectStats(stats) {
-    // Logic to display project stats in the report view
-    chartContainer.innerHTML = JSON.stringify(stats, null, 2); // Placeholder for actual chart rendering logic
+    sidePane.style.display = 'block';
 }
 
 function showLoading() {
@@ -232,7 +229,7 @@ function findNodeById(node, id) {
 function createTree(data) {
     // Define the dimensions for A1 size paper at 300 DPI (dots per inch)
     // 300 DPI is standard for high-quality prints
-    const dpi = 600;
+    const dpi = 900;
     const widthInches = 33.1;
     const heightInches = 23.4;
     const width = widthInches * dpi;
@@ -292,7 +289,7 @@ function createTree(data) {
         .attr('x', d => d.children ? -10 : 10)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .style('font-size', '24px') // Adjust font size for print
-        .text(d => d.data.name);
+        .text(d => `${d.data.name} (${d.data.local_node_radia_sites_count}RF)`);
 
     // Implement zoom and pan for better navigation
     const zoom = d3.zoom()
@@ -301,7 +298,22 @@ function createTree(data) {
             svg.attr('transform', event.transform);
         });
 
-    d3.select('#diagram').select('svg').call(zoom);
+    // Apply zoom using D3 with passive scroll listener
+    // Store the original wheel event handler
+    var originalWheel = zoom.wheel;
+
+    // Override the wheel method
+    zoom.wheel = function(event) {
+        // Your custom logic (if any)
+        originalWheel.call(this, event);
+    };
+
+    // Apply the zoom behavior with a passive wheel event listener
+    svg.call(zoom)
+       .on("wheel.zoom", null)
+       .on("wheel.zoom", function(event) {
+           zoom.wheel(event);
+       }, { passive: true });
 
     // Optional: Fit the tree to the viewport
     // This ensures the entire tree fits within the SVG area
@@ -333,73 +345,7 @@ function createTree(data) {
         link.style('opacity', 1);
     });
 
-        const nodeLegend = svg.selectAll(".node-legend")
-        .data([
-            { label: `IPMPLS Router: `, color: 'Red' },
-            { label: 'Grand Master Clock', color: 'RoyalBlue' },
-            { label: 'DWDM', color: 'RoyalBlue' }
-        ])
-        .enter().append("g")
-        .attr("class", "legend")
-        .attr("transform", (d, i) => `translate(${width - 850},${height - 660 + i * 35})`);
-
-    nodeLegend.append("path")
-        .attr("d", d => {
-            if (d.label === 'Grand Master Clock') {
-                return d3.symbol().type(d3.symbolSquare).size(200)();  // Diamond for Grand Master Clock
-            } else if (d.label === 'DWDM') {
-                return d3.symbol().type(d3.symbolTriangle).size(250)();  // Square for DWDM
-            } else {
-                return d3.symbol().type(d3.symbolCircle).size(250)();  // Circle for other labels
-            }
-        })
-        .attr("fill", d => d.color)
-        .attr("cx", 9)
-        .attr("cy", 0);
-
-    nodeLegend.append("text")
-        .attr("x", 25)
-        .attr("y", 5)
-        .attr("dy", ".35em")
-        .style("text-anchor", "start")
-        .text(d => d.label);
-
-    svg.append("text")
-        .attr("x", width - 850)
-        .attr("y", height - 700)
-        .attr("dy", ".35em")
-        .style("text-anchor", "start")
-        .style("font-weight", "bold")
-        .text("Node Legend:");
-
-    const linkLegend = svg.selectAll(".link-legend")
-        .data(Object.keys(solnLegendColorMap))
-        .enter().append("g")
-        .attr("class", "legend")
-        .attr("transform", (d, i) => `translate(${width - 850},${height - 660 + (i + 7) * 30})`);
-
-    linkLegend.append("line")
-        .attr("x1", 0)
-        .attr("y1", 0)
-        .attr("x2", 18)
-        .attr("y2", 0)
-        .style("stroke-width", 6)
-        .style("stroke", d => solnLegendColorMap[d]);
-
-    linkLegend.append("text")
-        .attr("x", 25)
-        .attr("y", 5)
-        .attr("dy", ".35em")
-        .style("text-anchor", "start")
-        .text(d => d);
-
-    svg.append("text")
-        .attr("x", width - 850)
-        .attr("y", height - 490)
-        .attr("dy", ".35em")
-        .style("text-anchor", "start")
-        .style("font-weight", "bold")
-        .text("Link Legend:");
+    addBlockTypesLegend(svg, height, width, projectStats.total_blocked_locally, projectStats.blocked_by_parents_design, projectStats.pending_parents_sync, projectStats.pending_transmission, projectStats.total_affected_by_parent, projectStats.ready_by_design, projectStats.in_sync_sites_count);
 }
 
 // Handle Node Search Form Submission
@@ -418,6 +364,181 @@ document.getElementById('search-node-form').addEventListener('submit', (e) => {
         searchResultDiv.innerText = 'Node not found';
     }
 });
+
+function addBlockTypesLegend(svg,  height, width, totalBlockedLocally, blockedByParentsDesign, pendingParentsSync, pendingTransmission, totalAffectedByParent, readyByDesign, inSyncSitesCount) {
+
+    const nodeLegend = svg.selectAll(".node-legend")
+        .data([
+            { label: `IPMPLS InSync: ${inSyncSitesCount}`, color: 'LimeGreen' },
+            { label: `IPMPLS Blocked: ${totalBlockedLocally} + Blocked by Parent: ${blockedByParentsDesign}`, color: 'red' },
+            { label: `Pending Parent Sync: ${pendingParentsSync}`, color: 'Gray' },
+            { label: `Pending Transmission: ${pendingTransmission}`, color: 'Orange' },
+            { label: `IPMPLS Ready: ${readyByDesign}`, color: 'RoyalBlue' },
+            { label: 'Grand Master Clock', color: 'RoyalBlue' },
+            { label: 'DWDM', color: 'RoyalBlue' }
+        ])
+        .enter().append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(${width - 650},${height - 680 + i * 25})`);
+
+    nodeLegend.append("path")
+        .attr("d", d => {
+            if (d.label === 'Grand Master Clock') {
+                return d3.symbol().type(d3.symbolSquare).size(150)();  // Diamond for Grand Master Clock
+            } else if (d.label === 'DWDM') {
+                return d3.symbol().type(d3.symbolTriangle).size(100)();  // Square for DWDM
+            } else {
+                return d3.symbol().type(d3.symbolCircle).size(100)();  // Circle for other labels
+            }
+        })
+        .attr("fill", d => d.color)
+        .attr("cx", 9)
+        .attr("cy", 0);
+
+    nodeLegend.append("text")
+        .attr("x", 25)
+        .attr("y", 5)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .text(d => d.label);
+
+    svg.append("text")
+        .attr("x", width - 650)
+        .attr("y", height - 700)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .style("font-weight", "bold")
+        .text("Node Legend:");
+
+    const linkLegend = svg.selectAll(".link-legend")
+        .data(Object.keys(solnColorMap))
+        .enter().append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(${width - 650},${height - 610 + (i + 7) * 20})`);
+
+    linkLegend.append("line")
+        .attr("x1", 0)
+        .attr("y1", 0)
+        .attr("x2", 18)
+        .attr("y2", 0)
+        .style("stroke-width", 4)
+        .style("stroke", d => solnColorMap[d]);
+
+    linkLegend.append("text")
+        .attr("x", 25)
+        .attr("y", 5)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .text(d => d);
+
+    svg.append("text")
+        .attr("x", width - 650)
+        .attr("y", height - 500)
+        .attr("dy", ".35em")
+        .style("text-anchor", "start")
+        .style("font-weight", "bold")
+        .text("Link Legend:");
+}
+
+function displayProjectStats(stats) {
+    const ctxOverall = document.getElementById('overall-progress-chart').getContext('2d');
+    const regionChartsContainer = document.getElementById('region-charts-container');
+
+    // Destroy existing charts if they exist
+    if (overallChartInstance) {
+        overallChartInstance.destroy();
+    }
+    regionChartInstances.forEach(chart => chart.destroy());
+    regionChartInstances = [];
+
+    // Generate overall progress chart (Bar chart)
+    overallChartInstance = new Chart(ctxOverall, {
+        type: 'bar',
+        data: {
+            labels: ['Implemented Sites', 'Ready', 'Blocked'],
+            datasets: [{
+                label: 'Overall Project Progress',
+                data: [projectStats.in_sync_sites_count, projectStats.ready_by_design, projectStats.total_blocked_sites],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.2)',  // Implemented Sites
+                    'rgba(54, 162, 235, 0.2)',  // Ready
+                    'rgba(255, 159, 64, 0.2)',  // Blocked by Parent
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 159, 64, 1)',
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Generate pie charts per region (one for each region)
+    const regions = ['Region 1', 'Region 2', 'Region 3', 'Region 4', 'Region 5'];
+    const regionData = [
+        { "implemented_sites_count": 1, "ready": 20, "total_blocked_by_parent": 40, "total_blocked_locally": 10 },
+        { "implemented_sites_count": 0, "ready": 15, "total_blocked_by_parent": 50, "total_blocked_locally": 5 },
+        { "implemented_sites_count": 1, "ready": 18, "total_blocked_by_parent": 30, "total_blocked_locally": 8 },
+        { "implemented_sites_count": 0, "ready": 10, "total_blocked_by_parent": 60, "total_blocked_locally": 15 },
+        { "implemented_sites_count": 0, "ready": 9, "total_blocked_by_parent": 33, "total_blocked_locally": 15 }
+    ];
+
+    regionChartsContainer.innerHTML = ''; // Clear previous region charts
+
+    regions.forEach((region, index) => {
+        const canvas = document.createElement('canvas');
+        canvas.id = `region-progress-chart-${index}`;
+        regionChartsContainer.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        const regionInfo = regionData[index];
+
+        const chart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Implemented Sites', 'Ready', 'Blocked by Parent', 'Blocked Locally'],
+                datasets: [{
+                    label: `${region} Site Distribution`,
+                    data: [regionInfo.implemented_sites_count, regionInfo.ready, regionInfo.total_blocked_by_parent, regionInfo.total_blocked_locally],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.6)',  // Implemented Sites
+                        'rgba(54, 162, 235, 0.6)',  // Ready
+                        'rgba(255, 159, 64, 0.6)',  // Blocked by Parent
+                        'rgba(255, 99, 132, 0.6)'   // Blocked Locally
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        enabled: true
+                    }
+                }
+            }
+        });
+
+        regionChartInstances.push(chart);
+    });
+}
 
 function exportSVG() {
     const svgElement = document.querySelector('svg');
