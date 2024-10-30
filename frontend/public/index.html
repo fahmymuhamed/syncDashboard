@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tree Visualization with CSV Reports</title>
     <link rel="stylesheet" href="/css/styles.css">
-    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Include Chart.js -->
 </head>
 <body>
@@ -31,7 +31,7 @@
                 <button type="submit">Search</button>
             </form>
             <div id="search-result"></div>
-
+<!-- Individual region charts will be appended here by JavaScript
             <h3>Update Node Information</h3>
             <form id="update-node-form">
                 <label for="node-id">Node ID:</label>
@@ -61,7 +61,7 @@
                     <button type="submit">Update Node</button>
                 </div>
             </form>
-
+-->
             <h3>Reports</h3>
             <label for="report-dropdown"></label><select id="report-dropdown">
                 <option value="blockedByParent">Site Blocked By Parents</option>

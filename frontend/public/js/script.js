@@ -67,6 +67,7 @@ async function fetchTreeData() {
 
 async function fetchProjectStats() {
     projectStats = await fetchData(`${API_BASE_URL}/project_stats`);
+    populateProjectStats();
 }
 
 function setView(view) {
@@ -140,6 +141,7 @@ function getDescendants(node) {
 }
 
 // Handle Node Fetch Button Click
+/*
 document.getElementById('fetch-node-data').addEventListener('click', () => {
     const nodeId = document.getElementById('node-id').value;
     if (nodeId) {
@@ -156,7 +158,7 @@ document.getElementById('update-node-form').addEventListener('submit', (e) => {
     const siteDoableStatus = document.getElementById('site-doable-status').value === 'true';
     updateNodeInformation(nodeId, transportSyncStatus, transmissionSyncStatus, siteDoableStatus);
 });
-
+*/
 async function fetchNodeData(nodeId) {
     if (!treeDataCache) {
         console.error('Tree data not loaded.');
@@ -540,6 +542,22 @@ function displayProjectStats(stats) {
     });
 }
 
+// projectStats.js
+
+// Function to populate project stats in the DOM
+function populateProjectStats() {
+    // Assuming projectStats is available globally or received via an API
+    if (typeof projectStats !== 'undefined' && projectStats) {
+        document.getElementById('inSyncSitesCount').textContent = projectStats.in_sync_sites_count;
+        document.getElementById('totalBlockedLocally').textContent = projectStats.total_blocked_locally;
+        document.getElementById('blockedByParentsDesign').textContent = projectStats.blocked_by_parents_design;
+        document.getElementById('pendingParentsSync').textContent = projectStats.pending_parents_sync;
+        document.getElementById('pendingTransmission').textContent = projectStats.pending_transmission;
+        document.getElementById('readyByDesign').textContent = projectStats.ready_by_design;
+    } else {
+        console.error("projectStats is not defined or unavailable.");
+    }
+}
 function exportSVG() {
     const svgElement = document.querySelector('svg');
     const serializer = new XMLSerializer();
