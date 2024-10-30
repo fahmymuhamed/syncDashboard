@@ -1,16 +1,17 @@
 // Configuration and Constants
 const API_BASE_URL = 'http://localhost:5000/api';
 const VIEWS = {
-    BLOCK_TYPES: 'blockTypes',
-    SOW_TECH: 'sowAndTech'
+    TREE_VIEW: 'treeView',
+    REPORT_VIEW: 'reportView'
 };
 
 // Cache Frequently Used Elements
 const diagram = document.getElementById('diagram');
 const chartContainer = document.getElementById('chart-container');
 const mainContentTitle = document.getElementById('main-content-title');
+const sidePane = document.getElementById('fixed-column');
 
-let currentView = VIEWS.BLOCK_TYPES;
+let currentView = VIEWS.TREE_VIEW;
 let treeDataCache = null;
 let projectStats = null;
 let overallChartInstance = null;
@@ -71,20 +72,37 @@ function setView(view) {
     currentView = view;
     updateViewName();
     d3.select('svg').remove();
-    fetchProjectStats();
-    fetchTreeData();
-    showTreeVisualization();
+    fetchProjectStats(); // Fetch project stats for both views
+    if (currentView === VIEWS.TREE_VIEW) {
+        fetchTreeData();
+        showTreeVisualization();
+    } else if (currentView === VIEWS.REPORT_VIEW) {
+        showReportView();
+        displayProjectStats(projectStats);
+    }
 }
 
 function updateViewName() {
-    const viewName = currentView === VIEWS.BLOCK_TYPES ? 'Block Types' : 'SOW Issuance & Tech Data';
+    const viewName = currentView === VIEWS.TREE_VIEW ? 'Tree View' : 'Project Status Report';
     //document.getElementById('view-selection').innerText = viewName;
+    mainContentTitle.innerText = viewName;
 }
 
 function showTreeVisualization() {
     diagram.style.display = 'block';
     chartContainer.style.display = 'none';
-    mainContentTitle.innerText = 'Tree Visualization';
+    sidePane.style.display = 'block';
+}
+
+function showReportView() {
+    diagram.style.display = 'none';
+    chartContainer.style.display = 'block';
+    sidePane.style.display = 'none';
+}
+
+function displayProjectStats(stats) {
+    // Logic to display project stats in the report view
+    chartContainer.innerHTML = JSON.stringify(stats, null, 2); // Placeholder for actual chart rendering logic
 }
 
 function showLoading() {
@@ -214,7 +232,7 @@ function findNodeById(node, id) {
 function createTree(data) {
     // Define the dimensions for A1 size paper at 300 DPI (dots per inch)
     // 300 DPI is standard for high-quality prints
-    const dpi = 1600;
+    const dpi = 600;
     const widthInches = 33.1;
     const heightInches = 23.4;
     const width = widthInches * dpi;
@@ -255,7 +273,7 @@ function createTree(data) {
 
     node.append('circle')
         .attr('r', d => d.data.local_node_domain !== 'IPMPLS' ? 0 : 12) // Adjust node radius for better visibility
-        .style('fill', d => currentView === VIEWS.BLOCK_TYPES ? d.data.implementation_color : d.data.design_color);
+        .style('fill', d => d.data.implementation_color);
 
     // Add symbols for specific nodes
     node.filter(d => d.data.local_node_domain === 'DWDM' && d.data.local_sync_solution === 'GNSS')
@@ -422,4 +440,4 @@ function exportSVG() {
     URL.revokeObjectURL(url);
 }
 
-window.onload = setView(VIEWS.BLOCK_TYPES);
+window.onload = setView(VIEWS.TREE_VIEW);
