@@ -291,7 +291,7 @@ function createTree(data) {
         .attr('x', d => d.children ? -10 : 10)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .style('font-size', '24px') // Adjust font size for print
-        .text(d => `${d.data.name} (${d.data.local_node_radia_sites_count}RF)`);
+        .text(d => `${d.data.name} (${d.data.local_node_radio_sites_count}RF)`);
 
     // Implement zoom and pan for better navigation
     const zoom = d3.zoom()

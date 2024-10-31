@@ -329,6 +329,20 @@ def update_tree_node(local_site_name, local_ip_transport_in_sync, local_transmis
     except StopIteration:
         logging.error(f"Node not found in tree for site: {local_site_name}")
 
+# Function to get ancestors up to a certain level
+def get_ancestors(node, attribute=None):
+    ancestors = []
+    current = node
+    level = 0
+    while current.parent is not None :
+        ancestors.append(current.parent)
+        current = current.parent
+    ancestors.reverse()
+    # Return specific attribute if requested
+    if attribute:
+        return [getattr(ancestor, attribute, None) for ancestor in ancestors]
+    return ancestors
+
 # API to serve progress metrics
 @app.route('/api/project_stats', methods=['GET'])
 def get_progress():
@@ -346,13 +360,18 @@ def get_report():
     elif report_type == 'masterSheet':
         data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_site_name', None), getattr(node, 'local_sync_solution', None),
                  getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
-    elif report_type == 'sowIssuedBlockedParent':
-        data = [['Site D', 'SOW Issued, Blocked Parent']]
+    elif report_type == 'readyNodes':
+        data = [ [getattr(node, 'local_node_name', None), None] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_doable', None) and getattr(node, 'local_node_domain', None)=="IPMPLS" and not is_blocked_by_parent_design(node) ]
     elif report_type == 'dependenciesMap':
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'transportPorts':
         data = [['Site F', 'Transport Ports']]
-
+    elif report_type == 'nodeParentsMap':
+        data = [
+            [getattr(node, 'local_node_name', None)] + get_ancestors(node, attribute='local_node_name')
+            for node in LevelOrderIter(gps_root)
+            if getattr(node, 'local_node_domain', None) == "IPMPLS"
+        ]
     # Create a CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
