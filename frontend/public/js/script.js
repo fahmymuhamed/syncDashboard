@@ -347,7 +347,7 @@ function createTree(data) {
         link.style('opacity', 1);
     });
 
-    addBlockTypesLegend(svg, height, width, projectStats.total_blocked_locally, projectStats.blocked_by_parents_design, projectStats.pending_parents_sync, projectStats.pending_transmission, projectStats.total_affected_by_parent, projectStats.ready_by_design, projectStats.in_sync_sites_count);
+    addBlockTypesLegend(svg, height, width, projectStats.overall.total_blocked_locally, projectStats.overall.blocked_by_parents_design, projectStats.overall.pending_parents_sync, projectStats.overall.pending_transmission, projectStats.overall.total_affected_by_parent, projectStats.overall.ready_by_design, projectStats.overall.in_sync_sites_count);
 }
 
 // Handle Node Search Form Submission
@@ -442,85 +442,48 @@ function addBlockTypesLegend(svg,  height, width, totalBlockedLocally, blockedBy
         .text("Link Legend:");
 }
 
+let regionComparisonChart = null;
 function displayProjectStats(stats) {
     const ctxOverall = document.getElementById('overall-progress-chart').getContext('2d');
-    const regionChartsContainer = document.getElementById('region-charts-container');
+    const regionSelect = document.getElementById('region-select');
+
+    // Function to destroy an existing chart
+    function destroyChart(chartInstance) {
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+    }
 
     // Destroy existing charts if they exist
-    if (overallChartInstance) {
-        overallChartInstance.destroy();
+    destroyChart(overallChartInstance);
+    if (regionComparisonChart) {
+        regionComparisonChart.destroy();
+        regionComparisonChart = null;
     }
-    regionChartInstances.forEach(chart => chart.destroy());
-    regionChartInstances = [];
 
-    // Generate overall progress chart (Bar chart)
-    overallChartInstance = new Chart(ctxOverall, {
-        type: 'bar',
-        data: {
-            labels: ['Implemented Sites', 'Ready', 'Blocked'],
-            datasets: [{
-                label: 'Overall Project Progress',
-                data: [projectStats.in_sync_sites_count, projectStats.ready_by_design, projectStats.total_blocked_sites],
-                backgroundColor: [
-                    'rgba(75, 192, 192, 0.2)',  // Implemented Sites
-                    'rgba(54, 162, 235, 0.2)',  // Ready
-                    'rgba(255, 159, 64, 0.2)',  // Blocked by Parent
-                ],
-                borderColor: [
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 159, 64, 1)',
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
+    // Function to update chart data based on selected region
+    function updateChart(region) {
+        destroyChart(overallChartInstance);
 
-    // Generate pie charts per region (one for each region)
-    const regions = ['Region 1', 'Region 2', 'Region 3', 'Region 4', 'Region 5'];
-    const regionData = [
-        { "implemented_sites_count": 1, "ready": 20, "total_blocked_by_parent": 40, "total_blocked_locally": 10 },
-        { "implemented_sites_count": 0, "ready": 15, "total_blocked_by_parent": 50, "total_blocked_locally": 5 },
-        { "implemented_sites_count": 1, "ready": 18, "total_blocked_by_parent": 30, "total_blocked_locally": 8 },
-        { "implemented_sites_count": 0, "ready": 10, "total_blocked_by_parent": 60, "total_blocked_locally": 15 },
-        { "implemented_sites_count": 0, "ready": 9, "total_blocked_by_parent": 33, "total_blocked_locally": 15 }
-    ];
+        const data = region ? stats.regions[region] : stats.overall;
 
-    regionChartsContainer.innerHTML = ''; // Clear previous region charts
-
-    regions.forEach((region, index) => {
-        const canvas = document.createElement('canvas');
-        canvas.id = `region-progress-chart-${index}`;
-        regionChartsContainer.appendChild(canvas);
-
-        const ctx = canvas.getContext('2d');
-        const regionInfo = regionData[index];
-
-        const chart = new Chart(ctx, {
+        overallChartInstance = new Chart(ctxOverall, {
             type: 'pie',
             data: {
-                labels: ['Implemented Sites', 'Ready', 'Blocked by Parent', 'Blocked Locally'],
+                labels: ['Blocked by Parents Design', 'Pending Parents Sync', 'Ready by Design'],
                 datasets: [{
-                    label: `${region} Site Distribution`,
-                    data: [regionInfo.implemented_sites_count, regionInfo.ready, regionInfo.total_blocked_by_parent, regionInfo.total_blocked_locally],
+                    label: 'Project Progress',
+                    data: [data.blocked_by_parents_design, data.pending_parents_sync, data.ready_by_design],
                     backgroundColor: [
-                        'rgba(75, 192, 192, 0.6)',  // Implemented Sites
-                        'rgba(54, 162, 235, 0.6)',  // Ready
-                        'rgba(255, 159, 64, 0.6)',  // Blocked by Parent
-                        'rgba(255, 99, 132, 0.6)'   // Blocked Locally
+                        'rgba(255, 99, 132, 0.2)',   // Blocked by Parents Design
+                        'rgba(255, 206, 86, 0.2)',    // Pending Parents Sync
+                        'rgba(75, 192, 192, 0.2)'     // Ready by Design
                     ],
                     borderColor: [
-                        'rgba(75, 192, 192, 1)',
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 159, 64, 1)',
-                        'rgba(255, 99, 132, 1)'
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)'
                     ],
                     borderWidth: 1
                 }]
@@ -529,31 +492,101 @@ function displayProjectStats(stats) {
                 responsive: true,
                 plugins: {
                     legend: {
-                        position: 'bottom',
+                        position: 'top',
                     },
                     tooltip: {
-                        enabled: true
+                        callbacks: {
+                            label: function(tooltipItem) {
+                                return tooltipItem.label + ': ' + tooltipItem.raw + ' sites';
+                            }
+                        }
                     }
                 }
             }
         });
+    }
 
-        regionChartInstances.push(chart);
+    // Event listener for region selection
+    regionSelect.addEventListener('change', function() {
+        const selectedRegion = regionSelect.value;
+        updateChart(selectedRegion);
+    });
+
+    // Initial chart display (Overall data)
+    updateChart();
+
+    // Generate regional comparison chart (Stacked Bar Chart)
+    const ctxRegionComparison = document.getElementById('region-comparison-chart').getContext('2d');
+    const regions = Object.keys(stats.regions);
+    const blockedData = regions.map(region => stats.regions[region].blocked_by_parents_design);
+    const pendingData = regions.map(region => stats.regions[region].pending_parents_sync);
+    const readyData = regions.map(region => stats.regions[region].ready_by_design);
+
+    destroyChart(regionComparisonChart);
+    regionComparisonChart = new Chart(ctxRegionComparison, {
+        type: 'bar',
+        data: {
+            labels: regions,
+            datasets: [
+                {
+                    label: 'Blocked by Parents Design',
+                    data: blockedData,
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Pending Parents Sync',
+                    data: pendingData,
+                    backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Ready by Design',
+                    data: readyData,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(tooltipItem) {
+                            return tooltipItem.dataset.label + ': ' + tooltipItem.raw + ' sites';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
     });
 }
 
-// projectStats.js
+// projectStats.overall.js
 
 // Function to populate project stats in the DOM
 function populateProjectStats() {
     // Assuming projectStats is available globally or received via an API
     if (typeof projectStats !== 'undefined' && projectStats) {
-        document.getElementById('inSyncSitesCount').textContent = projectStats.in_sync_sites_count;
-        document.getElementById('totalBlockedLocally').textContent = projectStats.total_blocked_locally;
-        document.getElementById('blockedByParentsDesign').textContent = projectStats.blocked_by_parents_design;
-        document.getElementById('pendingParentsSync').textContent = projectStats.pending_parents_sync;
-        document.getElementById('pendingTransmission').textContent = projectStats.pending_transmission;
-        document.getElementById('readyByDesign').textContent = projectStats.ready_by_design;
+        document.getElementById('totalNodes').textContent = projectStats.overall.total_nodes;
+        document.getElementById('inSyncSitesCount').textContent = projectStats.overall.in_sync_sites_count;
+        document.getElementById('totalBlockedLocally').textContent = projectStats.overall.total_blocked_locally;
+        document.getElementById('blockedByParentsDesign').textContent = projectStats.overall.blocked_by_parents_design;
+        document.getElementById('pendingParentsSync').textContent = projectStats.overall.pending_parents_sync;
+        document.getElementById('pendingTransmission').textContent = projectStats.overall.pending_transmission;
+        document.getElementById('readyByDesign').textContent = projectStats.overall.ready_by_design;
     } else {
         console.error("projectStats is not defined or unavailable.");
     }

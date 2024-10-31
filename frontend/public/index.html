@@ -79,6 +79,9 @@
             <h3>Project Statistics</h3>
             <div id="project-stats" class="project-stats">
                 <div class="stat-item">
+                    <strong>IPMPLS InSync:</strong> <span id="totalNodes"></span>
+                </div>
+                <div class="stat-item">
                     <strong>IPMPLS InSync:</strong> <span id="inSyncSitesCount"></span>
                 </div>
                 <div class="stat-item">
@@ -101,11 +104,28 @@
         <h1 id="main-content-title">Tree Visualization</h1>
         <div id="diagram"></div>
         <div id="chart-container" style="display:none;">
-            <canvas id="overall-progress-chart" style="max-width: 70%;"></canvas> <!-- Overall Progress Chart -->
+            <canvas id="overall-progress-chart" style="max-width: 50%;"></canvas> <!-- Overall Progress Chart -->
+        <div style="width: 70%; margin: auto;">
+            <h2>Overall Project Progress</h2>
+            <select id="region-select">
+                <option value="">Overall</option>
+                <option value="Center">Center</option>
+                <option value="East">East</option>
+                <option value="North-E">North-E</option>
+                <option value="North-W">North-W</option>
+                <option value="South">South</option>
+                <option value="West">West</option>
+            </select>
             <div id="region-charts-container" style="margin-top: 20px;max-width: 30%;"> <!-- Container for Region Pie Charts -->
                 <!-- Individual region charts will be appended here by JavaScript -->
             </div>
+            <div style="width: 75%; margin: auto; margin-top: 50px;">
+                <h2>Regional Comparison Chart</h2>
+                <canvas id="region-comparison-chart" width="600" height="400"></canvas>
+            </div>
         </div>
+
+
     </div>
 
     <script src="/js/script.js"></script>
