@@ -31,7 +31,7 @@ data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.6.xlsx')  # Default to
 df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
 
 # Build the main GPS root node
-gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black')
+gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
 
 # Create JsonExporter to export tree in JSON format
 exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(obj, '__dict__', str(obj)))
@@ -46,16 +46,16 @@ region_nodes = {}
 # Create a function to build the hierarchical structure dynamically using anytree
 def build_tree():
     global gps_root, region_nodes
-    gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black')
+    gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
     region_nodes = {}
     for region in regions:
-        region_nodes[region] = Node(region, parent=gps_root, local_node_domain="REGION", local_sync_solution="Imaginary Link", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black')
+        region_nodes[region] = Node(region, parent=gps_root, local_node_domain="REGION", local_sync_solution="Imaginary Link", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
     for root in roots:
         region = df[df['local_node_name'] == root]['local_node_region'].values[0]
         # Get information for the current root node
         node_info = df[df['local_node_name'] == root].iloc[0].to_dict()
         # Create a node for the current site with attributes
-        node = Node(root, parent=region_nodes[region], grand_master_site_name=root, design_color='black', implementation_color='black', **{k: v for k, v in node_info.items()})
+        node = Node(root, parent=region_nodes[region], grand_master_site_name=root, design_color='black', implementation_color='black', total_radio_site_count=0, **{k: v for k, v in node_info.items()})
         # Recursively build child nodes
         children_df = df[df['upper_sync_source_node_name'] == root]
         children = children_df['local_node_name'].tolist()
@@ -66,7 +66,7 @@ def build_subtree(grand_master_site_name, root_name, parent_node):
     # Get information for the current root node
     node_info = df[df['local_node_name'] == root_name].iloc[0].to_dict()
     # Create a node for the current site with attributes
-    node = Node(root_name, parent=parent_node, grand_master_site_name=grand_master_site_name, design_color='black', implementation_color='black', **{k: v for k, v in node_info.items()})
+    node = Node(root_name, parent=parent_node, grand_master_site_name=grand_master_site_name, design_color='black', implementation_color='black', total_radio_site_count=0, **{k: v for k, v in node_info.items()})
     # Recursively build child nodes
     children_df = df[df['upper_sync_source_node_name'] == root_name]
     children = children_df['local_node_name'].tolist()
@@ -97,6 +97,32 @@ def is_blocked_by_parent_design(node):
             return True
         current_node = parent
     return False
+
+# Function to get descendants up to a certain level, optionally with a specific attribute
+def get_descendants(node, attribute=None):
+
+    descendants = []
+    for child in node.children:
+        if attribute and hasattr(child, attribute):
+            descendants.append(getattr(child, attribute))
+        else:
+            descendants.append(child)
+        descendants.extend(get_descendants(child, attribute))
+    return descendants
+
+# Function to get ancestors up to a certain level
+def get_ancestors(node, attribute=None):
+    ancestors = []
+    current = node
+    level = 0
+    while current.parent is not None :
+        ancestors.append(current.parent)
+        current = current.parent
+    ancestors.reverse()
+    # Return specific attribute if requested
+    if attribute:
+        return [getattr(ancestor, attribute, None) for ancestor in ancestors]
+    return ancestors
 
 # Function to apply colors to the nodes based on certain criteria
 def apply_node_colors(tree_root):
@@ -329,20 +355,6 @@ def update_tree_node(local_site_name, local_ip_transport_in_sync, local_transmis
     except StopIteration:
         logging.error(f"Node not found in tree for site: {local_site_name}")
 
-# Function to get ancestors up to a certain level
-def get_ancestors(node, attribute=None):
-    ancestors = []
-    current = node
-    level = 0
-    while current.parent is not None :
-        ancestors.append(current.parent)
-        current = current.parent
-    ancestors.reverse()
-    # Return specific attribute if requested
-    if attribute:
-        return [getattr(ancestor, attribute, None) for ancestor in ancestors]
-    return ancestors
-
 # API to serve progress metrics
 @app.route('/api/project_stats', methods=['GET'])
 def get_progress():
@@ -365,7 +377,7 @@ def get_report():
     elif report_type == 'dependenciesMap':
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'transportPorts':
-        data = [['Site F', 'Transport Ports']]
+        data = [get_descendants(node, attribute=None) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS"]
     elif report_type == 'nodeParentsMap':
         data = [
             [getattr(node, 'local_node_name', None)] + get_ancestors(node, attribute='local_node_name')
