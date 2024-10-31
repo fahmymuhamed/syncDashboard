@@ -140,3 +140,23 @@ button[type="submit"] {
 button[type="submit"]:hover {
     background-color: #45a049;
 }
+#project-stats {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-top: 20px;
+}
+.stat-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+.stat-item:last-child {
+    border-bottom: none;
+}
+.stat-item strong {
+    color: #343a40;
+}
+.stat-item span {
+    color: #007bff;
+}

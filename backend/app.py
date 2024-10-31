@@ -1,3 +1,5 @@
+from pickle import FALSE
+
 import pandas as pd
 from anytree import Node, LevelOrderIter
 from anytree.exporter import JsonExporter
@@ -7,6 +9,7 @@ from anytree import Node, PreOrderIter, LevelOrderIter, RenderTree
 from anytree.exporter import JsonExporter
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
+from copy import deepcopy
 import logging
 import os
 import io
@@ -144,82 +147,109 @@ def has_dependency_on_parent(node):
 # Function to determine the dependencies list
 def dependencies_list(node):
     current_node = node
-    local_site_name = getattr(node, 'local_site_name', None)
+    local_node_name = getattr(node, 'local_node_name', None)
     local_node_domain = getattr(node, 'local_node_domain', None)
     local_sync_solution = getattr(current_node, 'local_sync_solution', None)
     dwdm_dependency = None
+    dwdm_rediness = None
     ipmpls_dependency = None
+    ipmpls_rediness = None
 
     if local_node_domain == "IPMPLS":
-        if local_sync_solution in ["Local to GM", "Local to DWDM"] and not has_dependency_on_parent(current_node):
-            dwdm_dependency = f"{getattr(current_node, 'local_site_name', None)}_DWDM"
+        if getattr(current_node, 'Upper_sync_source_domain', None) == "DWDM" and not has_dependency_on_parent(current_node):
+            dwdm_dependency = f"{getattr(current_node, 'direct_parent', None)}"
+            dwdm_rediness = f"{getattr(current_node, 'local_transmission_in_sync', FALSE)}"
         elif has_dependency_on_parent(current_node):
-            if local_sync_solution in ["Local to GM", "Local to DWDM"]:
-                dwdm_dependency = f"{getattr(current_node, 'local_site_name', None)}_DWDM"
-            elif local_sync_solution in ["Dedicated DF"] and getattr(current_node.parent, 'local_node_domain', None) == "DWDM":
-                dwdm_dependency = f"{getattr(current_node.parent, 'local_site_name', None)}_DWDM"
+            if getattr(current_node, 'Upper_sync_source_domain', None) == "DWDM":
+                dwdm_dependency = f"{getattr(current_node, 'direct_parent', None)}"
+                dwdm_rediness = f"{getattr(current_node, 'local_transmission_in_sync', FALSE)}"
             while current_node.parent:
                 parent = current_node.parent
                 current_solution = getattr(current_node, 'local_sync_solution', None)
                 parent_solution = getattr(parent, 'local_sync_solution', None)
                 if current_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
-                    ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
+                    ipmpls_dependency = f"{getattr(parent, 'local_node_name', None)}"
+                    ipmpls_rediness = f"{getattr(parent, 'local_node_doable', None)}"
                     break
                 elif parent_solution in ["Dedicated DF", "In-Band", "MPLS Collocated"] and getattr(parent, 'local_node_domain', None) == "IPMPLS":
-                    ipmpls_dependency = f"{getattr(parent, 'local_site_name', None)}_IPMPLS"
+                    ipmpls_dependency = f"{getattr(parent, 'local_node_name', None)}"
+                    ipmpls_rediness = f"{getattr(parent, 'local_node_doable', None)}"
                     break
                 current_node = parent
 
-    return [local_site_name, dwdm_dependency, ipmpls_dependency]
+    return [local_node_name, dwdm_dependency, dwdm_rediness, ipmpls_dependency, ipmpls_rediness]
+
+
+# Define a template for the statistics dictionary
+stats_template = {
+    "total_nodes": 0,
+    "in_sync_sites_count": 0,
+    "pending_parents_sync": 0,
+    "blocked_by_parents_design": 0,
+    "pending_transmission": 0,
+    "blocked_issued_sow": 0,
+    "ready_by_design": 0,
+    "total_blocked_locally": 0,
+    "total_blocked_sites": 0,
+    "total_affected_by_parent": 0,
+    "total_sow_and_tech_data": 0,
+    "total_sow_no_tech_data": 0,
+    "total_doable_no_sow": 0
+}
 
 # Calculate project statistics based on the nodes
-def calculate_project_stats(tree_root):
-    result = {
-        "in_sync_sites_count": 0,
-        "pending_parents_sync": 0,
-        "blocked_by_parents_design": 0,
-        "pending_transmission": 0,
-        "blocked_issued_sow": 0,
-        "ready_by_design": 0,
-        "total_blocked_locally": 0,
-        "total_blocked_sites": 0,
-        "total_affected_by_parent": 0,
-        "total_sow_and_tech_data": 0,
-        "total_sow_no_tech_data": 0,
-        "total_doable_no_sow": 0
-    }
+def calculate_project_stats(tree_root, region_nodes):
+    # Initialize result dictionary for overall stats and region-specific stats
+    result = {}
+    result["overall"] = {}  # To store region-specific stats
+    result["overall"] = deepcopy(stats_template)
+    result["regions"] = {}  # To store region-specific stats
 
-    for node in LevelOrderIter(tree_root):
-
+    # Define a function to update stats for a given node and stats dictionary
+    def update_stats(node, stats):
+        stats["total_nodes"] += 1 if getattr(node, 'local_node_domain', None) == "IPMPLS" else 0
         if getattr(node, 'local_node_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
-            result["in_sync_sites_count"] += 1
+            stats["in_sync_sites_count"] += 1
         elif getattr(node, 'local_node_domain', None) == "IPMPLS" and not getattr(node, 'local_node_doable', False):
-            result["total_blocked_locally"] += 1
-            result["total_blocked_sites"] += 1
+            stats["total_blocked_locally"] += 1
+            stats["total_blocked_sites"] += 1
             if getattr(node, 'scope_of_work_issued', False):
-                result["blocked_issued_sow"] += 1
+                stats["blocked_issued_sow"] += 1
         elif getattr(node, 'local_node_domain', None) == "IPMPLS" and is_blocked_by_parent_design(node):
-            result["total_affected_by_parent"] += 1
-            result["total_blocked_sites"] += 1
-            result["blocked_by_parents_design"] += 1
+            stats["total_affected_by_parent"] += 1
+            stats["total_blocked_sites"] += 1
+            stats["blocked_by_parents_design"] += 1
         elif getattr(node, 'local_node_domain', None) == "IPMPLS" and is_blocked_by_parent_sync(node):
-            result["total_affected_by_parent"] += 1
-            result["total_blocked_sites"] += 1
-            result["pending_parents_sync"] += 1
+            stats["total_affected_by_parent"] += 1
+            stats["total_blocked_sites"] += 1
+            stats["pending_parents_sync"] += 1
             if getattr(node, 'scope_of_work_issued', False):
-                result["blocked_issued_sow"] += 1
+                stats["blocked_issued_sow"] += 1
         elif getattr(node, 'local_node_domain', None) == "IPMPLS" and getattr(node, 'local_sync_solution', None) in ["Local to DWDM", "Local to GM"] and not getattr(node, 'local_transmission_in_sync', False):
-            result['pending_transmission'] += 1
+            stats['pending_transmission'] += 1
         elif getattr(node, 'local_sync_solution', None) == "Dedicated DF" and getattr(node, 'upper_sync_source_site_domain', None) == "DWDM" and not getattr(node.parent, 'local_transmission_in_sync', False):
-            result['pending_transmission'] += 1
+            stats['pending_transmission'] += 1
         elif getattr(node, 'local_node_domain', None) == "IPMPLS":
-            result["ready_by_design"] += 1
+            stats["ready_by_design"] += 1
             if getattr(node, 'scope_of_work_issued', False) and getattr(node, 'tech_data_provided', False):
-                result["total_sow_and_tech_data"] += 1
+                stats["total_sow_and_tech_data"] += 1
             elif getattr(node, 'scope_of_work_issued', False) and not getattr(node, 'tech_data_provided', False):
-                result["total_sow_no_tech_data"] += 1
+                stats["total_sow_no_tech_data"] += 1
             else:
-                result["total_doable_no_sow"] += 1
+                stats["total_doable_no_sow"] += 1
+
+    # Calculate stats for the entire tree
+    for node in LevelOrderIter(tree_root):
+        update_stats(node, result["overall"])
+
+    # Calculate stats for each region using region_nodes
+    for region, nodes in region_nodes.items():
+        region_stats = deepcopy(stats_template)
+        for node in LevelOrderIter(nodes):
+            update_stats(node, region_stats)
+
+        # Store region stats in the result dictionary under the region name
+        result["regions"][region] = region_stats
 
     return result
 
@@ -302,7 +332,7 @@ def update_tree_node(local_site_name, local_ip_transport_in_sync, local_transmis
 # API to serve progress metrics
 @app.route('/api/project_stats', methods=['GET'])
 def get_progress():
-    return jsonify(calculate_project_stats (gps_root))
+    return jsonify(calculate_project_stats (gps_root, region_nodes))
 
 # Report generation endpoint
 @app.route('/api/report', methods=['GET'])
@@ -312,14 +342,14 @@ def get_report():
     # Simulate different reports (you'll replace this with your actual logic)
     data = [['Default', 'Default']]
     if report_type == 'blockedByParent':
-        data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
+        data = [['Default', 'Default']]
     elif report_type == 'masterSheet':
         data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_site_name', None), getattr(node, 'local_sync_solution', None),
                  getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'sowIssuedBlockedParent':
         data = [['Site D', 'SOW Issued, Blocked Parent']]
-    elif report_type == 'noBlockageNoInBand':
-        data = [['Site E', 'No Blockage, No In-Band']]
+    elif report_type == 'dependenciesMap':
+        data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'transportPorts':
         data = [['Site F', 'Transport Ports']]
 
