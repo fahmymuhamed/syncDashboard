@@ -229,29 +229,36 @@ function findNodeById(node, id) {
 }
 
 function createTree(data) {
-    // Define the dimensions for A1 size paper at 300 DPI (dots per inch)
-    // 300 DPI is standard for high-quality prints
+    // Define the dimensions for A0 size paper at 900 DPI (dots per inch)
     const dpi = 900;
-    const widthInches = 33.1;
-    const heightInches = 23.4;
+    const widthInches = 46.8;
+    const heightInches = 33.1;
     const width = widthInches * dpi;
     const height = heightInches * dpi;
     const margin = { top: 50, right: 200, bottom: 50, left: 200 };
 
-    // Create the tree layout with adjusted size
-    const tree = d3.tree().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
-
+    // Create the SVG and apply zoom behavior
     const svg = d3.select('#diagram').append('svg')
         .attr('width', width)
         .attr('height', height)
+        .call(d3.zoom()
+            .scaleExtent([0.1, 3]) // Adjust the zoom scale limits for a wider zoom range
+            .on('zoom', (event) => {
+                g.attr('transform', event.transform); // Apply both zoom and pan transformations
+            }))
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const g = svg.append('g'); // Create a group to hold all elements of the tree
+
+    // Create the tree layout with adjusted size
+    const tree = d3.tree().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
 
     let nodes = d3.hierarchy(data, d => d.children);
     nodes = tree(nodes);
 
     // Adjust the link paths
-    const link = svg.append('g')
+    const link = g.append('g')
         .selectAll('.link')
         .data(nodes.links().filter(d => d.source.data.name !== 'GPS'))
         .enter().append('path')
@@ -263,7 +270,7 @@ function createTree(data) {
         .style('fill', 'none');
 
     // Adjust the nodes
-    const node = svg.append('g')
+    const node = g.append('g')
         .selectAll('.node')
         .data(nodes.descendants().filter(d => d.data.name !== 'GPS'))
         .enter().append('g')
@@ -291,45 +298,17 @@ function createTree(data) {
         .attr('x', d => d.children ? -10 : 10)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .style('font-size', '24px') // Adjust font size for print
-        .text(d => `${d.data.name} (${d.data.local_node_radio_sites_count}RF)`);
-
-    // Implement zoom and pan for better navigation
-    const zoom = d3.zoom()
-        .scaleExtent([0.5, 2]) // Adjust scale extent for print size
-        .on('zoom', function (event) {
-            svg.attr('transform', event.transform);
-        });
-
-    // Apply zoom using D3 with passive scroll listener
-    // Store the original wheel event handler
-    var originalWheel = zoom.wheel;
-
-    // Override the wheel method
-    zoom.wheel = function(event) {
-        // Your custom logic (if any)
-        originalWheel.call(this, event);
-    };
-
-    // Apply the zoom behavior with a passive wheel event listener
-    svg.call(zoom)
-       .on("wheel.zoom", null)
-       .on("wheel.zoom", function(event) {
-           zoom.wheel(event);
-       }, { passive: true });
+        .text(d => `${d.data.name} (${d.data.local_node_radio_sites_count}RF)_(${d.data.total_radio_site_count}TRF)`);
 
     // Optional: Fit the tree to the viewport
-    // This ensures the entire tree fits within the SVG area
-    const bounds = svg.node().getBBox();
+    const bounds = g.node().getBBox();
     const fullWidth = bounds.width + margin.left + margin.right;
     const fullHeight = bounds.height + margin.top + margin.bottom;
     const scale = Math.min(width / fullWidth, height / fullHeight);
     const translateX = (width - fullWidth * scale) / 2;
     const translateY = (height - fullHeight * scale) / 2;
 
-    d3.select('#diagram').select('svg')
-        .attr('width', width)
-        .attr('height', height)
-        .call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+    svg.attr('transform', `translate(${translateX},${translateY}) scale(${scale})`);
 
     // Interactivity for nodes
     node.on('mouseover', function (event, d) {
@@ -347,8 +326,9 @@ function createTree(data) {
         link.style('opacity', 1);
     });
 
-    addBlockTypesLegend(svg, height, width, projectStats.overall.total_blocked_locally, projectStats.overall.blocked_by_parents_design, projectStats.overall.pending_parents_sync, projectStats.overall.pending_transmission, projectStats.overall.total_affected_by_parent, projectStats.overall.ready_by_design, projectStats.overall.in_sync_sites_count);
+    addBlockTypesLegend(g, height, width, projectStats.overall.total_blocked_locally, projectStats.overall.blocked_by_parents_design, projectStats.overall.pending_parents_sync, projectStats.overall.pending_transmission, projectStats.overall.total_affected_by_parent, projectStats.overall.ready_by_design, projectStats.overall.in_sync_sites_count);
 }
+
 
 // Handle Node Search Form Submission
 document.getElementById('search-node-form').addEventListener('submit', (e) => {

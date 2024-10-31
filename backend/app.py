@@ -128,6 +128,10 @@ def get_ancestors(node, attribute=None):
 def apply_node_colors(tree_root):
 
     for node in LevelOrderIter(tree_root):
+        if getattr(node, 'local_node_domain', None) == "IPMPLS":
+            local_radio_count = getattr(node, 'local_node_radio_sites_count', 0)
+            descendants_count = sum(get_descendants(node, attribute="local_node_radio_sites_count"))
+            node.total_radio_site_count = local_radio_count + descendants_count
         if getattr(node, 'local_node_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             node.implementation_color = 'LimeGreen'  # In Sync
             node.design_color = 'LimeGreen'  # In Sync
@@ -367,17 +371,27 @@ def get_report():
 
     # Simulate different reports (you'll replace this with your actual logic)
     data = [['Default', 'Default']]
+    header_row = ['SiteID', 'Issue']
     if report_type == 'blockedByParent':
         data = [['Default', 'Default']]
     elif report_type == 'masterSheet':
-        data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_site_name', None), getattr(node, 'local_sync_solution', None),
+        data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_node_name', None), getattr(node, 'local_sync_solution', None),
                  getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'readyNodes':
         data = [ [getattr(node, 'local_node_name', None), None] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_doable', None) and getattr(node, 'local_node_domain', None)=="IPMPLS" and not is_blocked_by_parent_design(node) ]
     elif report_type == 'dependenciesMap':
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
-    elif report_type == 'transportPorts':
-        data = [get_descendants(node, attribute=None) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS"]
+    elif report_type == 'radioAffectedPerNode':
+        header_row = ['NodeID', 'local_RF_count', 'total_RF_count']
+        data = [
+            [
+                getattr(node, 'local_node_name', None),
+                getattr(node, 'local_node_radio_sites_count', 0),
+                getattr(node, 'local_node_radio_sites_count', 0) + sum(get_descendants(node, attribute="local_node_radio_sites_count"))
+            ]
+            for node in LevelOrderIter(gps_root)
+            if getattr(node, 'local_node_domain', None) == "IPMPLS"
+        ]
     elif report_type == 'nodeParentsMap':
         data = [
             [getattr(node, 'local_node_name', None)] + get_ancestors(node, attribute='local_node_name')
@@ -387,7 +401,7 @@ def get_report():
     # Create a CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['SiteID', 'Issue'])
+    writer.writerow(header_row)
     writer.writerows(data)
 
     # Return CSV file
