@@ -1,5 +1,5 @@
 // Configuration and Constants
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://127.0.0.1:5000/api';
 const VIEWS = {
     TREE_VIEW: 'treeView',
     REPORT_VIEW: 'reportView'
@@ -214,7 +214,7 @@ async function updateNodeInformation(nodeId, transportSyncStatus, transmissionSy
 }
 
 function findNodeById(node, id) {
-    if (node.name === id) {
+    if (node.name.toLowerCase().includes(id.toLowerCase())) {
         return node;
     }
     if (node.children) {
@@ -230,7 +230,7 @@ function findNodeById(node, id) {
 
 function createTree(data) {
     // Define the dimensions for A0 size paper at 900 DPI (dots per inch)
-    const dpi = 900;
+    const dpi = 300;
     const widthInches = 46.8;
     const heightInches = 33.1;
     const width = widthInches * dpi;
@@ -313,7 +313,11 @@ function createTree(data) {
     // Interactivity for nodes
     node.on('mouseover', function (event, d) {
         // Update information display
-        document.getElementById('search-result').innerText = `Node Name: ${d.data.name}\nSync Solution: ${d.data.local_sync_solution || 'N/A'}\nRouter Platform: ${d.data.local_ip_transport_site_router_platform || 'N/A'}\nRouter Layer: ${d.data.local_ip_transport_site_router_layer || 'N/A'}\nUpper Sync Source: ${d.data.upper_sync_source_site_name || 'N/A'}`;
+        const searchResultDiv = document.getElementById('search-result');
+        if (searchResultDiv) {
+            // Convert the node data to match our fields map
+            updateSearchResult(d.data); // Pass the searchResultDiv and node data or null
+        }
 
         // Highlight related nodes and links
         const ancestors = getAncestors(d);
@@ -329,21 +333,67 @@ function createTree(data) {
     addBlockTypesLegend(g, height, width, projectStats.overall.total_blocked_locally, projectStats.overall.blocked_by_parents_design, projectStats.overall.pending_parents_sync, projectStats.overall.pending_transmission, projectStats.overall.total_affected_by_parent, projectStats.overall.ready_by_design, projectStats.overall.in_sync_sites_count);
 }
 
-
-// Handle Node Search Form Submission
-document.getElementById('search-node-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const nodeName = document.getElementById('search-node').value;
-    if (!treeDataCache) {
-        console.error('Tree data not loaded.');
-        return;
-    }
-    const node = findNodeById(treeDataCache, nodeName);
-    const searchResultDiv = document.getElementById('search-result');
-    if (node) {
-        searchResultDiv.innerText = `Node Name: ${node.name}\nSync Solution: ${node.local_sync_solution || 'N/A'}\nRouter Platform: ${node.local_ip_transport_site_router_platform || 'N/A'}\nRouter Layer: ${node.local_ip_transport_site_router_layer || 'N/A'}\nUpper Sync Source: ${node.upper_sync_source_site_name || 'N/A'}`;
+// Function to update search results with a data map or clear it if data is null
+function updateSearchResult(node) {
+    const data = node
+    ? {
+          name: node.local_node_name,
+          sync_solution: node.local_sync_solution,
+          router_platform: node.local_ip_transport_site_router_platform,
+          router_layer: node.local_ip_transport_site_router_layer,
+          upper_sync_source: node.upper_sync_source_site_name,
+      }
+    : null;
+    // Map of result fields to their corresponding element IDs
+    const fields = {
+        name: 'result-node-name',
+        sync_solution: 'result-sync-solution',
+        router_platform: 'result-router-platform',
+        router_layer: 'result-router-layer',
+        upper_sync_source: 'result-upper-sync-source',
+    };
+    if (data) {
+        // Populate each field with data or "N/A" if data is missing
+        for (const [key, elementId] of Object.entries(fields)) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = data[key] || 'N/A';
+            } else {
+                console.warn(`Element with ID "${elementId}" not found in the DOM.`);
+            }
+        }
     } else {
-        searchResultDiv.innerText = 'Node not found';
+        // Set "Node not found" message and reset other fields to "N/A"
+        const nameElement = document.getElementById(fields.name);
+        if (nameElement) nameElement.textContent = 'Node not found';
+
+        for (const elementId of Object.values(fields)) {
+            const element = document.getElementById(elementId);
+            if (element && element !== nameElement) {
+                element.textContent = 'N/A';
+            }
+        }
+    }
+}
+
+// Debounced Search Node Function
+
+// Event listener for the search form
+
+document.getElementById('search-node-form').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const nodeName = document.getElementById('search-node').value.trim();
+        if (!treeDataCache) {
+            console.error('Tree data not loaded.');
+            return;
+        }
+        const searchResultDiv = document.getElementById('search-result');
+        if (nodeName && searchResultDiv) {
+            const node = findNodeById(treeDataCache, nodeName);
+            // Convert the node data to match our fields map
+            updateSearchResult(node); // Pass the searchResultDiv and node data or null
+        }
     }
 });
 

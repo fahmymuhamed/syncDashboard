@@ -21,16 +21,26 @@
         <!-- Combined View Section -->
         <div id="combined-view" class="section">
             <h3>View Selection</h3>
+            <!--
             <button class="view-button" onclick="setView('blockTypes')">Blocked Sites</button>
             <button class="view-button" onclick="setView('sowAndTech')">SOW Issuance Progress</button>
-
+             -->
             <h3>Search Node Information</h3>
-            <form id="search-node-form">
+            <form id="search-node-form" class="search-form">
                 <label for="search-node">Node Name:</label>
                 <input type="text" id="search-node" name="search-node" placeholder="Enter Node Name">
-                <button type="submit">Search</button>
+                <!-- <button type="submit">Search</button> -->
             </form>
-            <div id="search-result"></div>
+            <div id="search-result" class="search-result">
+                <h3>Node Details</h3>
+                <ul>
+                    <li><strong>Name:</strong> <span id="result-node-name">N/A</span></li>
+                    <li><strong>Sync Solution:</strong> <span id="result-sync-solution">N/A</span></li>
+                    <li><strong>Router Platform:</strong> <span id="result-router-platform">N/A</span></li>
+                    <li><strong>Router Layer:</strong> <span id="result-router-layer">N/A</span></li>
+                    <li><strong>Upper Sync Source:</strong> <span id="result-upper-sync-source">N/A</span></li>
+                </ul>
+            </div>
 <!-- Individual region charts will be appended here by JavaScript
             <h3>Update Node Information</h3>
             <form id="update-node-form">
