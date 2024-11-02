@@ -1,5 +1,5 @@
 // Configuration and Constants
-const API_BASE_URL = 'http://127.0.0.1:5000/api';
+const API_BASE_URL = 'http://192.168.107.20:5000/api';
 const VIEWS = {
     TREE_VIEW: 'treeView',
     REPORT_VIEW: 'reportView'

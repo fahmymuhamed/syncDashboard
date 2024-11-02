@@ -40,6 +40,7 @@ exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(ob
 # Define the roots dynamically where local_sync_solution == 'Local to GM'
 roots = df[df['local_sync_solution'] == 'GNSS']['local_node_name'].tolist()
 regions = df[df['local_sync_solution'] == 'GNSS']['local_node_region'].unique().tolist()
+blockages_list = df[df['local_node_domain'] == 'IPMPLS']['local_node_high_level_cat'].unique().tolist()
 
 region_nodes = {}
 
@@ -374,6 +375,27 @@ def get_report():
     header_row = ['SiteID', 'Issue']
     if report_type == 'blockedByParent':
         data = [['Default', 'Default']]
+    elif report_type == 'radioAffectedPerCat':
+        header_row = ['Category', 'local_RF_count', 'total_RF_count']
+        node_cat_set = set()
+        # Iterate over each blockage category in blockages_list
+        for blockage_cat in blockages_list:
+            node_cat_set = set()
+            # Iterate over each descendant of the gps_root
+            for node in gps_root.descendants:
+                # Check if the node's 'local_node_high_level_cat' matches the blockage category
+                if getattr(node, 'local_node_high_level_cat', None) == blockage_cat and getattr(node, 'local_node_domain', None)=="IPMPLS":
+                    # Add the node itself to the set
+                    node_cat_set.add(node)
+                    # Add the descendants of the node to the set
+                    node_cat_set.update(node.descendants)
+            data.append(
+                [
+                    #blockage_cat, [getattr(node_cat, 'local_node_name', 0) for node_cat in node_cat_set]
+                    blockage_cat, sum(getattr(node_cat, 'local_node_radio_sites_count', 0) for node_cat in node_cat_set)
+                ]
+            )
+
     elif report_type == 'masterSheet':
         data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_node_name', None), getattr(node, 'local_sync_solution', None),
                  getattr(node, 'upper_sync_source_site_name', None), getattr(node, 'grand_master_site_name', None)] for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
@@ -410,5 +432,5 @@ def get_report():
 
 if __name__ == '__main__':
     CORS(app)
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
 
