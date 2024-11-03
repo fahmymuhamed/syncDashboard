@@ -99,16 +99,21 @@ def is_blocked_by_parent_design(node):
         current_node = parent
     return False
 
-# Function to get descendants up to a certain level, optionally with a specific attribute
-def get_descendants(node, attribute=None):
-
+# Function to get descendants up to a certain level, optionally with a specific attribute,
+# and excluding blocked nodes and their children if block_attr is set.
+def get_descendants(node, attribute=None, block_attr=None):
     descendants = []
     for child in node.children:
+        # Skip if block_attr is set and the node is blocked
+        if block_attr and not getattr(child, block_attr, False):
+            continue
+        # Include the attribute if specified, otherwise include the child node itself
         if attribute and hasattr(child, attribute):
             descendants.append(getattr(child, attribute))
         else:
             descendants.append(child)
-        descendants.extend(get_descendants(child, attribute))
+        # Recursively add the descendants based on block_attr
+        descendants.extend(get_descendants(child, attribute, block_attr))
     return descendants
 
 # Function to get ancestors up to a certain level
@@ -377,7 +382,7 @@ def get_report():
         data = [['Default', 'Default']]
     elif report_type == 'radioAffectedPerCat':
         header_row = ['Category', 'local_RF_count', 'total_RF_count']
-        node_cat_set = set()
+        data = []
         # Iterate over each blockage category in blockages_list
         for blockage_cat in blockages_list:
             node_cat_set = set()
@@ -405,15 +410,24 @@ def get_report():
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'radioAffectedPerNode':
         header_row = ['NodeID', 'local_RF_count', 'total_RF_count']
-        data = [
-            [
-                getattr(node, 'local_node_name', None),
-                getattr(node, 'local_node_radio_sites_count', 0),
-                getattr(node, 'local_node_radio_sites_count', 0) + sum(get_descendants(node, attribute="local_node_radio_sites_count"))
-            ]
-            for node in LevelOrderIter(gps_root)
-            if getattr(node, 'local_node_domain', None) == "IPMPLS"
-        ]
+        data = []
+        for node in gps_root.descendants:
+            if getattr(node, 'local_node_domain', None) == "IPMPLS":
+                local_radio_sites_count = getattr(node, 'local_node_radio_sites_count', 0)
+                non_blocked_radio_sites_sum = (
+                    local_radio_sites_count + sum(
+                        get_descendants(node, attribute="local_node_radio_sites_count", block_attr="local_node_doable"))
+                    if getattr(node, 'local_node_doable', False) and  not is_blocked_by_parent_design(node) else 0
+                )
+                data.append(
+                    [
+                        getattr(node, 'local_node_name', None),
+                        getattr(node, 'depth', None) - 2,
+                        local_radio_sites_count,
+                        non_blocked_radio_sites_sum,
+                        local_radio_sites_count + sum(get_descendants(node, attribute="local_node_radio_sites_count"))
+                    ]
+                )
     elif report_type == 'nodeParentsMap':
         data = [
             [getattr(node, 'local_node_name', None)] + get_ancestors(node, attribute='local_node_name')
