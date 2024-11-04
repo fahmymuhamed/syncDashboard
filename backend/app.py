@@ -81,22 +81,22 @@ build_tree()
 
 def assign_phases(root):
     # Recursive function to traverse the nodes by phases
-    def traverse_node(node, current_phase, previous_doable=True):
+    def traverse_node(node, current_phase, first_not_doable_encountered=False):
         if not hasattr(node, 'local_node_doable'):
             return  # Skip nodes without the required attribute
 
         # Set the phase attribute for the current node
-        # Check if the node is "doable" to decide if the same phase continues
         if node.local_node_doable:
             node.phase = current_phase
             node.is_first_not_doable = False
             # Continue with the same phase for doable children
             for child in node.children:
-                traverse_node(child, current_phase, previous_doable=True)
+                traverse_node(child, current_phase, first_not_doable_encountered=False)
         else:
-            # If this is the first "not doable" node in the current phase, mark it
-            if previous_doable:
-                node.is_first_not_doable = True  # Mark the first non-doable node in each phase
+            # Mark as first "not doable" node if this is the first in the phase
+            if not first_not_doable_encountered:
+                node.is_first_not_doable = True
+                first_not_doable_encountered = True
             else:
                 node.is_first_not_doable = False
 
@@ -104,7 +104,7 @@ def assign_phases(root):
             next_phase = current_phase + 1
             node.phase = next_phase
             for child in node.children:
-                traverse_node(child, next_phase, previous_doable=False)
+                traverse_node(child, next_phase, first_not_doable_encountered=False)
 
     # Start traversing from the root
     traverse_node(root, current_phase=1)
@@ -416,7 +416,7 @@ def get_report():
         data = [['Default', 'Default']]
     elif report_type == 'radioAffectedPerCat':
         header_row = ['Category', 'phase', 'direct_nodes#', 'direct_RF', 'indirect_nodes#', 'indirect_RF',
-                      'local_impacted_nodes#', 'local_impacted_RF', 'salek_nodes#', 'salek_RF', 'total_nodes#', 'total_RF']
+                      'local_impacted_nodes#', 'local_impacted_RF', 'total_nodes#', 'total_RF']
         data = []
         # Iterate over each blockage category in blockages_list
         for phase_no in range(1, 6):
@@ -443,8 +443,6 @@ def get_report():
                     if not getattr(total_cat, 'phase', None) == phase_no:
                         indirect_cat_set.add(total_cat)
 
-                    if getattr(total_cat, 'phase', None)==phase_no and not getattr(total_cat, 'is_first_not_doable', None):
-                        salek_cat_set.add(total_cat)
 
                 data.append(
                     [
@@ -458,9 +456,6 @@ def get_report():
                         ),len(directly_impacted_cat_set),
                         sum(
                             getattr(directly_impacted_cat, 'local_node_radio_sites_count', 0) for directly_impacted_cat in directly_impacted_cat_set
-                        ),len(salek_cat_set),
-                        sum(
-                            getattr(salek_cat, 'local_node_radio_sites_count', 0) for salek_cat in salek_cat_set
                         ),len(total_cat_set),
                         sum(
                             getattr(total_cat, 'local_node_radio_sites_count', 0) for total_cat in total_cat_set

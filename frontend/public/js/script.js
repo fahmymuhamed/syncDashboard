@@ -1,5 +1,5 @@
 // Configuration and Constants
-const API_BASE_URL = 'http://192.168.107.20:5000/api';
+const API_BASE_URL = 'http://192.168.0.102:5000/api';
 const VIEWS = {
     TREE_VIEW: 'treeView',
     REPORT_VIEW: 'reportView'
@@ -298,7 +298,8 @@ function createTree(data) {
         .attr('x', d => d.children ? -10 : 10)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .style('font-size', '24px') // Adjust font size for print
-        .text(d => `${d.data.name} (${d.data.local_node_radio_sites_count}RF)_(${d.data.total_radio_site_count}TRF)`);
+        //.text(d => `${d.data.name} (${d.data.local_node_radio_sites_count}RF)_(${d.data.total_radio_site_count}TRF)`);
+        .text(d => `${d.data.name} (${d.data.is_first_not_doable})_(${d.data.phase})`);
 
     // Optional: Fit the tree to the viewport
     const bounds = g.node().getBBox();
