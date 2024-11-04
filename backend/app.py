@@ -31,7 +31,8 @@ data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.6.xlsx')  # Default to
 df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
 
 # Build the main GPS root node
-gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
+gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True,
+                design_color='black', level=0, implementation_color='black', total_radio_site_count=0)
 
 # Create JsonExporter to export tree in JSON format
 exporter = JsonExporter(indent=4, sort_keys=True, default=lambda obj: getattr(obj, '__dict__', str(obj)))
@@ -77,6 +78,41 @@ def build_subtree(grand_master_site_name, root_name, parent_node):
 # Initial tree build
 build_tree()
 
+
+def assign_phases(root):
+    # Recursive function to traverse the nodes by phases
+    def traverse_node(node, current_phase, previous_doable=True):
+        if not hasattr(node, 'local_node_doable'):
+            return  # Skip nodes without the required attribute
+
+        # Set the phase attribute for the current node
+        # Check if the node is "doable" to decide if the same phase continues
+        if node.local_node_doable:
+            node.phase = current_phase
+            node.is_first_not_doable = False
+            # Continue with the same phase for doable children
+            for child in node.children:
+                traverse_node(child, current_phase, previous_doable=True)
+        else:
+            # If this is the first "not doable" node in the current phase, mark it
+            if previous_doable:
+                node.is_first_not_doable = True  # Mark the first non-doable node in each phase
+            else:
+                node.is_first_not_doable = False
+
+            # Increment the phase for non-doable nodes and their children
+            next_phase = current_phase + 1
+            node.phase = next_phase
+            for child in node.children:
+                traverse_node(child, next_phase, previous_doable=False)
+
+    # Start traversing from the root
+    traverse_node(root, current_phase=1)
+
+
+# Assign phases to nodes
+assign_phases(gps_root)
+
 # Function to determine if a node is blocked by its parent
 def is_blocked_by_parent_sync(node):
     current_node = node
@@ -121,7 +157,7 @@ def get_ancestors(node, attribute=None):
     ancestors = []
     current = node
     level = 0
-    while current.parent is not None :
+    while current.parent is not None:
         ancestors.append(current.parent)
         current = current.parent
     ancestors.reverse()
@@ -135,9 +171,7 @@ def apply_node_colors(tree_root):
 
     for node in LevelOrderIter(tree_root):
         if getattr(node, 'local_node_domain', None) == "IPMPLS":
-            local_radio_count = getattr(node, 'local_node_radio_sites_count', 0)
-            descendants_count = sum(get_descendants(node, attribute="local_node_radio_sites_count"))
-            node.total_radio_site_count = local_radio_count + descendants_count
+            node.total_indirect_site_count = sum(get_descendants(node, attribute="local_node_radio_sites_count"))
         if getattr(node, 'local_node_domain', None) == "IPMPLS" and getattr(node, 'local_ip_transport_in_sync', False):
             node.implementation_color = 'LimeGreen'  # In Sync
             node.design_color = 'LimeGreen'  # In Sync
@@ -381,25 +415,58 @@ def get_report():
     if report_type == 'blockedByParent':
         data = [['Default', 'Default']]
     elif report_type == 'radioAffectedPerCat':
-        header_row = ['Category', 'local_RF_count', 'total_RF_count']
+        header_row = ['Category', 'phase', 'direct_nodes#', 'direct_RF', 'indirect_nodes#', 'indirect_RF',
+                      'local_impacted_nodes#', 'local_impacted_RF', 'salek_nodes#', 'salek_RF', 'total_nodes#', 'total_RF']
         data = []
         # Iterate over each blockage category in blockages_list
-        for blockage_cat in blockages_list:
-            node_cat_set = set()
-            # Iterate over each descendant of the gps_root
-            for node in gps_root.descendants:
-                # Check if the node's 'local_node_high_level_cat' matches the blockage category
-                if getattr(node, 'local_node_high_level_cat', None) == blockage_cat and getattr(node, 'local_node_domain', None)=="IPMPLS":
-                    # Add the node itself to the set
-                    node_cat_set.add(node)
-                    # Add the descendants of the node to the set
-                    node_cat_set.update(node.descendants)
-            data.append(
-                [
-                    #blockage_cat, [getattr(node_cat, 'local_node_name', 0) for node_cat in node_cat_set]
-                    blockage_cat, sum(getattr(node_cat, 'local_node_radio_sites_count', 0) for node_cat in node_cat_set)
-                ]
-            )
+        for phase_no in range(1, 6):
+            for blockage_cat in blockages_list:
+                node_cat_set = set()
+                directly_impacted_cat_set = set()
+                salek_cat_set = set()
+                indirect_cat_set = set()
+                total_cat_set = set()
+                # Iterate over each descendant of the gps_root
+                for node in gps_root.descendants:
+                    # Check if the node's 'local_node_high_level_cat' matches the blockage category
+                    if getattr(node, 'local_node_high_level_cat', None) == blockage_cat and getattr(node, 'local_node_domain', None)=="IPMPLS" and getattr(node, 'phase', None)==phase_no:
+                        # Add the node itself to the set
+                        node_cat_set.add(node)
+                total_cat_set.update(node_cat_set)
+                for node_cat in node_cat_set:
+                    total_cat_set.update(node_cat.descendants)
+
+                    if getattr(node_cat, 'phase', None) == phase_no and getattr(node_cat, 'is_first_not_doable', None):
+                        directly_impacted_cat_set.add(node_cat)
+
+                for total_cat in total_cat_set:
+                    if not getattr(total_cat, 'phase', None) == phase_no:
+                        indirect_cat_set.add(total_cat)
+
+                    if getattr(total_cat, 'phase', None)==phase_no and not getattr(total_cat, 'is_first_not_doable', None):
+                        salek_cat_set.add(total_cat)
+
+                data.append(
+                    [
+                        #blockage_cat, [getattr(node_cat, 'local_node_name', 0) for node_cat in node_cat_set]
+                        blockage_cat, f"{phase_no}", len(node_cat_set),
+                        sum(
+                            getattr(node_cat, 'local_node_radio_sites_count', 0) for node_cat in node_cat_set
+                        ),len(indirect_cat_set),
+                        sum(
+                            getattr(indirect_cat, 'local_node_radio_sites_count', 0) for indirect_cat in indirect_cat_set
+                        ),len(directly_impacted_cat_set),
+                        sum(
+                            getattr(directly_impacted_cat, 'local_node_radio_sites_count', 0) for directly_impacted_cat in directly_impacted_cat_set
+                        ),len(salek_cat_set),
+                        sum(
+                            getattr(salek_cat, 'local_node_radio_sites_count', 0) for salek_cat in salek_cat_set
+                        ),len(total_cat_set),
+                        sum(
+                            getattr(total_cat, 'local_node_radio_sites_count', 0) for total_cat in total_cat_set
+                        )
+                    ]
+                )
 
     elif report_type == 'masterSheet':
         data = [[getattr(node, 'local_site_region', None), getattr(node, 'local_node_name', None), getattr(node, 'local_sync_solution', None),
@@ -409,28 +476,54 @@ def get_report():
     elif report_type == 'dependenciesMap':
         data = [dependencies_list(node) for node in LevelOrderIter(gps_root) if getattr(node, 'local_node_domain', None)=="IPMPLS" ]
     elif report_type == 'radioAffectedPerNode':
-        header_row = ['NodeID', 'local_RF_count', 'total_RF_count']
+        header_row = ['NodeID', 'parent|leaf', 'Hop#', 'first_not_doable', 'lcoal_node_status', 'parent_node_status', 'local_RF_count',
+                      'total_pending_radio_sites_by_local_node','indirect_radio_sites_by_parent_node_sum','salek_radio_sites_by_local_node_sum', 'total_RF_count']
         data = []
         for node in gps_root.descendants:
             if getattr(node, 'local_node_domain', None) == "IPMPLS":
+                radioAffectedPerNode_lcoal_node_status = "local_doable" if getattr(node, 'local_node_doable', False) else "local_blockage"
+                radioAffectedPerNode_parent_node_status = "parent(s)_blockage" if is_blocked_by_parent_design(node) else "parent(s)_doable"
                 local_radio_sites_count = getattr(node, 'local_node_radio_sites_count', 0)
-                non_blocked_radio_sites_sum = (
-                    local_radio_sites_count + sum(
-                        get_descendants(node, attribute="local_node_radio_sites_count", block_attr="local_node_doable"))
-                    if getattr(node, 'local_node_doable', False) and  not is_blocked_by_parent_design(node) else 0
+                node_descendants = get_descendants(node)
+                total_pending_radio_sites_by_local_node_sum = (
+                    sum(
+                        get_descendants(node, attribute="local_node_radio_sites_count")
+                    )
                 )
+                indirect_radio_sites_by_parent_node_sum = (
+                    sum(
+                        getattr(descendant_node, 'local_node_radio_sites_count', 0) for descendant_node in node_descendants if getattr(descendant_node, 'phase', 0) != getattr(node, 'phase', 0)
+                    )
+                )if is_blocked_by_parent_design(node) else 0
+
+                salek_radio_sites_by_local_node_sum = (
+                    sum(
+                        getattr(descendant_node, 'local_node_radio_sites_count', 0) for descendant_node in node_descendants if getattr(descendant_node, 'phase', False) == getattr(node, 'phase', True)
+                    )
+                )if not getattr(node, 'local_node_doable', False) else 0
+
                 data.append(
                     [
                         getattr(node, 'local_node_name', None),
-                        getattr(node, 'depth', None) - 2,
+                        "parent" if node.children else "leaf",
+                        getattr(node, 'phase', 0),
+                        "yes" if getattr(node, 'is_first_not_doable', None) else "no",
+                        radioAffectedPerNode_lcoal_node_status,
+                        radioAffectedPerNode_parent_node_status,
                         local_radio_sites_count,
-                        non_blocked_radio_sites_sum,
-                        local_radio_sites_count + sum(get_descendants(node, attribute="local_node_radio_sites_count"))
+                        total_pending_radio_sites_by_local_node_sum,
+                        indirect_radio_sites_by_parent_node_sum,
+                        salek_radio_sites_by_local_node_sum,
+                        local_radio_sites_count + sum(get_descendants(node, attribute="local_node_radio_sites_count")),
+                        getattr(node, 'local_node_high_level_cat', None)
                     ]
                 )
     elif report_type == 'nodeParentsMap':
         data = [
-            [getattr(node, 'local_node_name', None)] + get_ancestors(node, attribute='local_node_name')
+            [getattr(node, 'local_node_name', None)] + [getattr(node, 'local_node_doable', False)] + [
+                getattr(ancestor, 'local_node_name', None)
+                for ancestor in get_ancestors(node) if not getattr(ancestor, 'local_node_doable', False)
+            ]
             for node in LevelOrderIter(gps_root)
             if getattr(node, 'local_node_domain', None) == "IPMPLS"
         ]
