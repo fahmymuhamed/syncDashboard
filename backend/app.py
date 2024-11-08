@@ -25,10 +25,10 @@ import json
 import os
 
 # Load configuration from environment variables
-data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.6.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
+data_file_path = os.getenv('DATA_FILE_PATH', 'data/map_v4.3.xlsx')  # Default to 'data/map_v4.2.xlsx' if not set
 
 # Load the Excel data once at startup to avoid loading repeatedly
-df = pd.read_excel(data_file_path, sheet_name='Sheet1', dtype=object)
+df = pd.read_excel(data_file_path, sheet_name='Sheet2', dtype=object)
 
 # Build the main GPS root node
 gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True,
@@ -45,38 +45,54 @@ blockages_list = df[df['local_node_domain'] == 'IPMPLS']['local_node_high_level_
 
 region_nodes = {}
 
+
 # Create a function to build the hierarchical structure dynamically using anytree
-def build_tree():
+def build_tree(tree_type="full"):
+    """
+    Builds a tree structure with two types:
+    - "full": builds the entire tree including all domains.
+    - "ipmpls_dep_tree": skips nodes outside the IPMPLS domain and attaches their children to the nearest IPMPLS ancestor.
+    """
     global gps_root, region_nodes
-    gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
+    gps_root = Node("GPS", local_node_domain="DWDM", local_transmission_in_sync=True, local_node_doable=True,
+                    design_color='black', implementation_color='black', total_radio_site_count=0)
     region_nodes = {}
+
     for region in regions:
-        region_nodes[region] = Node(region, parent=gps_root, local_node_domain="REGION", local_sync_solution="Imaginary Link", local_transmission_in_sync=True, local_node_doable=True, design_color='black', implementation_color='black', total_radio_site_count=0)
+        region_nodes[region] = Node(region, parent=gps_root, local_node_domain="REGION",
+                                    local_sync_solution="Imaginary Link", local_transmission_in_sync=True,
+                                    local_node_doable=True, design_color='black', implementation_color='black',
+                                    total_radio_site_count=0)
+
     for root in roots:
         region = df[df['local_node_name'] == root]['local_node_region'].values[0]
-        # Get information for the current root node
         node_info = df[df['local_node_name'] == root].iloc[0].to_dict()
-        # Create a node for the current site with attributes
-        node = Node(root, parent=region_nodes[region], grand_master_site_name=root, design_color='black', implementation_color='black', total_radio_site_count=0, **{k: v for k, v in node_info.items()})
-        # Recursively build child nodes
-        children_df = df[df['upper_sync_source_node_name'] == root]
-        children = children_df['local_node_name'].tolist()
-        for child in children:
-            build_subtree(root, child, node)
 
-def build_subtree(grand_master_site_name, root_name, parent_node):
-    # Get information for the current root node
+        # Create a node for the current root based on the tree type
+        build_subtree(root, root, region_nodes[region], tree_type)
+
+
+def build_subtree(grand_master_site_name, root_name, parent_node, tree_type="full"):
     node_info = df[df['local_node_name'] == root_name].iloc[0].to_dict()
-    # Create a node for the current site with attributes
-    node = Node(root_name, parent=parent_node, grand_master_site_name=grand_master_site_name, design_color='black', implementation_color='black', total_radio_site_count=0, **{k: v for k, v in node_info.items()})
-    # Recursively build child nodes
+
+    # Determine if we should skip the node based on domain type
     children_df = df[df['upper_sync_source_node_name'] == root_name]
     children = children_df['local_node_name'].tolist()
-    for child in children:
-        build_subtree(grand_master_site_name, child, node)
+    if tree_type == "ipmpls_dep_tree" and node_info.get("local_node_domain") != "IPMPLS":
+        # Attach children to the nearest IPMPLS ancestor (grandfather node)
+        for child in children:
+            build_subtree(grand_master_site_name, child, parent_node, tree_type)
+    else:
+        # Create a node for the current site with attributes
+        node = Node(root_name, parent=parent_node, grand_master_site_name=grand_master_site_name, design_color='black',
+                    implementation_color='black', total_radio_site_count=0, **{k: v for k, v in node_info.items()})
+        # Recursively build child nodes
+        for child in children:
+            build_subtree(grand_master_site_name, child, node, tree_type)
 
-# Initial tree build
-build_tree()
+
+# Build the full tree
+build_tree("full")
 
 
 def assign_phases(root):
@@ -143,14 +159,20 @@ def get_descendants(node, attribute=None, block_attr=None):
         # Skip if block_attr is set and the node is blocked
         if block_attr and not getattr(child, block_attr, False):
             continue
-        # Include the attribute if specified, otherwise include the child node itself
-        if attribute and hasattr(child, attribute):
-            descendants.append(getattr(child, attribute))
+
+        # Retrieve attribute value if specified and ensure it's numeric
+        if attribute:
+            attr_value = getattr(child, attribute, 0)
+            if isinstance(attr_value, (int, float)):  # Only include numeric values
+                descendants.append(attr_value)
         else:
             descendants.append(child)
+
         # Recursively add the descendants based on block_attr
         descendants.extend(get_descendants(child, attribute, block_attr))
+
     return descendants
+
 
 # Function to get ancestors up to a certain level
 def get_ancestors(node, attribute=None):
@@ -497,6 +519,11 @@ def get_report():
                     )
                 )if not getattr(node, 'local_node_doable', False) else 0
 
+                descendant_values = [
+                    getattr(descendant, "local_node_radio_sites_count", 0)
+                    for descendant in get_descendants(node)
+                    if isinstance(getattr(descendant, "local_node_radio_sites_count", 0), (int, float))
+                ]
                 data.append(
                     [
                         getattr(node, 'local_node_name', None),
@@ -509,7 +536,7 @@ def get_report():
                         total_pending_radio_sites_by_local_node_sum,
                         indirect_radio_sites_by_parent_node_sum,
                         salek_radio_sites_by_local_node_sum,
-                        local_radio_sites_count + sum(get_descendants(node, attribute="local_node_radio_sites_count")),
+                        local_radio_sites_count + sum(descendant_values),
                         getattr(node, 'local_node_high_level_cat', None)
                     ]
                 )
